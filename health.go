@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -44,13 +45,7 @@ func probeTargets(client *http.Client, targets []probeTarget) error {
 
 func checkVPNConnection() error {
 	proxy, _ := url.Parse("socks5h://127.0.0.1:10808")
-	roots, err := x509.SystemCertPool()
-	if err != nil || roots == nil {
-		roots = x509.NewCertPool()
-	}
-	if !roots.AppendCertsFromPEM(probeRoots) {
-		return fmt.Errorf("invalid bundled CA roots")
-	}
+	roots := sharedRoots()
 	client, transport := newProbeClient(proxy, roots)
 	defer transport.CloseIdleConnections()
 	return probeTargets(client, []probeTarget{
@@ -74,3 +69,10 @@ func newProbeClient(proxy *url.URL, roots *x509.CertPool) (*http.Client, *http.T
 	}
 	return client, transport
 }
+
+var sharedRoots = sync.OnceValue(func() *x509.CertPool {
+	roots := x509.NewCertPool()
+	roots.AppendCertsFromPEM(githubRoots)
+	roots.AppendCertsFromPEM(probeRoots)
+	return roots
+})

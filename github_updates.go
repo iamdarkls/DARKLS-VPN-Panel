@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
@@ -57,9 +56,10 @@ type SignedRelease struct {
 	Size       int64  `json:"size"`
 }
 type ghAsset struct {
-	Name string `json:"name"`
-	URL  string `json:"browser_download_url"`
-	Size int64  `json:"size"`
+	Name   string `json:"name"`
+	URL    string `json:"browser_download_url"`
+	Size   int64  `json:"size"`
+	Digest string `json:"digest"`
 }
 type ghRelease struct {
 	Tag        string    `json:"tag_name"`
@@ -105,8 +105,7 @@ func allowedGitHubURL(raw string) bool {
 	return false
 }
 func githubHTTPClient(proxy bool) *http.Client {
-	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM(githubRoots)
+	roots := sharedRoots()
 	tr := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}, DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp4", address)
 	}, TLSHandshakeTimeout: 7 * time.Second, DisableKeepAlives: true}
@@ -353,6 +352,9 @@ func (s *Server) githubAPI(w http.ResponseWriter, r *http.Request, install bool)
 	respond(w, 202, map[string]any{"ok": true, "job": job})
 }
 func downloadGitHubPackage(ctx context.Context, raw string, m SignedRelease) (string, error) {
+	return downloadVerifiedAsset(ctx, raw, m.Size, m.SHA256, "/tmp", "darkls-github-*.zip")
+}
+func downloadVerifiedAsset(ctx context.Context, raw string, size int64, hash, dir, pattern string) (string, error) {
 	if !allowedGitHubURL(raw) {
 		return "", errors.New("неразрешённый адрес пакета")
 	}
@@ -374,19 +376,19 @@ func downloadGitHubPackage(ctx context.Context, raw string, m SignedRelease) (st
 			last = fmt.Errorf("загрузка HTTP %d", resp.StatusCode)
 			continue
 		}
-		f, e := os.CreateTemp("/tmp", "darkls-github-*.zip")
+		f, e := os.CreateTemp(dir, pattern)
 		if e != nil {
 			resp.Body.Close()
 			return "", e
 		}
 		name := f.Name()
 		h := sha256.New()
-		n, copyErr := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, m.Size+1))
+		n, copyErr := io.Copy(io.MultiWriter(f, h), io.LimitReader(resp.Body, size+1))
 		resp.Body.Close()
 		ce := f.Close()
-		if copyErr != nil || ce != nil || n != m.Size || hex.EncodeToString(h.Sum(nil)) != m.SHA256 {
+		if copyErr != nil || ce != nil || n != size || hex.EncodeToString(h.Sum(nil)) != hash {
 			os.Remove(name)
-			last = errors.New("размер или SHA-256 загруженного пакета не совпадает с подписью")
+			last = errors.New("размер или SHA-256 загруженного пакета не совпадает с проверенными метаданными")
 			continue
 		}
 		return name, nil

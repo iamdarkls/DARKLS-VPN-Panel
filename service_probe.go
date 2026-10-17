@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/x509"
 	"errors"
 	"net"
 	"net/http"
@@ -56,12 +55,7 @@ func checkService(ctx context.Context, domain string) ServiceResult {
 	if e != nil {
 		return finish(ServiceResult{Domain: domain, State: "dns_error", Message: "DNS роутера: " + redact(e.Error())})
 	}
-	roots, e := x509.SystemCertPool()
-	if e != nil || roots == nil {
-		roots = x509.NewCertPool()
-	}
-	roots.AppendCertsFromPEM(probeRoots)
-	roots.AppendCertsFromPEM(githubRoots)
+	roots := sharedRoots()
 	proxy, _ := url.Parse("socks5h://127.0.0.1:10808")
 	client, tr := newProbeClient(proxy, roots)
 	defer tr.CloseIdleConnections()

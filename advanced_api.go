@@ -8,9 +8,11 @@ import (
 	"time"
 )
 
+var advancedPaths = map[string]bool{"/api/report": true, "/api/connectivity": true, "/api/recover-part": true, "/api/dependencies": true, "/api/service-history": true, "/api/preview": true, "/api/timer": true, "/api/quic-observation": true, "/api/storage": true, "/api/storage-delete": true, "/api/cleanup-settings": true, "/api/cleanup-now": true, "/api/preferences": true, "/api/profiles": true, "/api/profile-save": true, "/api/profile-switch": true, "/api/xhttp-benchmark": true, "/api/xhttp-apply": true, "/api/load-test": true}
+
 func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
-	paths := map[string]bool{"/api/report": true, "/api/connectivity": true, "/api/recover-part": true, "/api/dependencies": true, "/api/service-history": true, "/api/preview": true, "/api/timer": true, "/api/quic-observation": true, "/api/storage": true, "/api/storage-delete": true, "/api/preferences": true, "/api/profiles": true, "/api/profile-save": true, "/api/profile-switch": true, "/api/xhttp-benchmark": true, "/api/xhttp-apply": true, "/api/load-test": true}
-	if !paths[r.URL.Path] {
+
+	if !advancedPaths[r.URL.Path] {
 		return false
 	}
 	get := r.URL.Path == "/api/report" || r.URL.Path == "/api/service-history" || r.URL.Path == "/api/storage" || r.URL.Path == "/api/profiles" || (r.URL.Path == "/api/preferences" && r.Method == "GET")
@@ -32,7 +34,7 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 		case "/api/service-history":
 			respond(w, 200, s.serviceHistory())
 		case "/api/storage":
-			respond(w, 200, map[string]any{"items": s.storageItems()})
+			respond(w, 200, s.storageStatus())
 		case "/api/profiles":
 			respond(w, 200, s.profileStatus())
 		case "/api/preferences":
@@ -193,6 +195,26 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 				e = errors.New("сначала добавьте и проверьте резервный канал")
 			} else {
 				e = atomicWrite(filepath.Join(s.dir, "preferences.json"), jsonBytes(p))
+			}
+		}
+	case "/api/cleanup-settings", "/api/cleanup-now":
+		var req struct {
+			Password string `json:"password"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if e = decode(w, r, &req); e == nil {
+			e = s.currentPassword(r, req.Password)
+		}
+		if e == nil {
+			if r.URL.Path == "/api/cleanup-settings" {
+				e = atomicWrite(s.corePath("cleanup-settings.json"), jsonBytes(CleanupSettings{Enabled: req.Enabled}))
+			} else {
+				var result CleanupResult
+				result, e = s.cleanupOld(time.Now())
+				if e == nil {
+					respond(w, 200, result)
+					return true
+				}
 			}
 		}
 	case "/api/storage-delete":

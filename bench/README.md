@@ -1,12 +1,12 @@
-# Memory microbenchmark
+# Память панели: локальный микротест
 
-Linux amd64, Go 1.27.2. Three server runs per build; each handles 1200 authenticated GET requests across state/export/backups. The baseline initializes the 1.0.2 catalog; the optimized build initializes the larger 1.0.3 catalog. There is no simulated VPN traffic. This is not router idle RSS.
+Проверяет пиковый RSS Linux-процесса через `wait4`, три запуска на сборку, по 1200 авторизованных запросов к state/export/backups. Одинаковые Go 1.27.2, флаги сборки и каталог сайтов. Тест не создаёт VPN-трафик и не измеряет RSS ASUS ARM64.
 
-Build the two Linux host binaries from their respective release sources using identical build flags. Then:
+```sh
+cc -O2 -Wall -Wextra -o bench/rss-supervisor bench/rss-supervisor.c
+DARKLS_BASELINE_BINARY=/path/to/baseline DARKLS_OPTIMIZED_BINARY=/path/to/current python3 bench/memory.py
+```
 
-    cc -O2 -o bench/rss-supervisor bench/rss-supervisor.c
-    DARKLS_BASELINE_BINARY=/absolute/path/to/baseline DARKLS_OPTIMIZED_BINARY=/absolute/path/to/optimized python3 bench/memory.py
+Результат записывается в `bench/results.json`. Сборки должны быть Linux amd64 и находиться вне работающей установки VPN. Используются loopback 18089 и временные файлы `/tmp/darkls-panel.pid`.
 
-The supervisor forks the Go server from a small C process and reports that child's wait4 ru_maxrss in KiB. This avoids counting a Python parent's pre-exec RSS as the child's peak. Results are written to bench/results.json. The benchmark temporarily uses loopback port 18089 and /tmp/darkls-panel.pid; run away from a live router installation.
-
-Median measured peak: 14396 KiB baseline, 12832 KiB optimized (~10.9% lower). Actual ARM router RAM must be measured separately; low idle usage may change little.
+Сравнение 1.3.0 → 1.4.0: медианы пикового RSS **12 984 → 13 268 КиБ**; отдельные прогоны 12 736–13 116 и 13 020–13 348 КиБ. Это около 13 МиБ в обоих случаях, снижение общего RSS не подтверждено. В 1.4.0 добавлены новые фоновые функции; устранение повторного разбора CA и создание таблицы API один раз уменьшают повторную работу, но этот HTTP-тест не измеряет TLS-проверки. Для выводов о реальном роутере нужны его метрики.

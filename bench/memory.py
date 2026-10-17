@@ -24,6 +24,6 @@ def run(binary):
    return {'peak_rss_kib':int(output.strip()),'requests':1200,'seconds':round(elapsed,3)}
   finally:
    if proc.returncode is None:proc.terminate();proc.wait(timeout=5)
-result={name:[run(binary) for _ in range(3)] for name,binary in [('baseline_1.0.2',os.environ.get('DARKLS_BASELINE_BINARY','/tmp/darkls-baseline-host')),('optimized_1.0.3',os.environ.get('DARKLS_OPTIMIZED_BINARY','/tmp/darkls-optimized-host'))]}
+result={name:[run(binary) for _ in range(3)] for name,binary in [('baseline',os.environ.get('DARKLS_BASELINE_BINARY','/tmp/darkls-baseline-host')),('current',os.environ.get('DARKLS_OPTIMIZED_BINARY','/tmp/darkls-optimized-host'))]}
 pathlib.Path('bench/results.json').write_text(json.dumps(result,indent=2))
 print(json.dumps(result,indent=2))

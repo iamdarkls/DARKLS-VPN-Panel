@@ -38,7 +38,7 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.3.0"
+var version = "1.4.0"
 
 type Group struct {
 	ID            string   `json:"id"`
@@ -91,8 +91,13 @@ type Server struct {
 	diagnosticMu    sync.Mutex
 	metricsMu       sync.Mutex
 	githubMu        sync.Mutex
+	coreMu          sync.Mutex
 	historyMu       sync.Mutex
 	lastCPU         cpuSample
+}
+
+func newServer(root, host string, runner Runner) *Server {
+	return &Server{root: root, dir: filepath.Join(root, "panel"), host: host, runner: runner, sessions: map[string]Session{}, attempts: map[string][]time.Time{}}
 }
 
 func token() string {
@@ -694,7 +699,7 @@ func (s *Server) handler() http.Handler {
 				w.WriteHeader(405)
 				return
 			}
-			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" && r.URL.Path != "/advanced.js" {
+			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" && r.URL.Path != "/advanced.js" && r.URL.Path != "/core.js" {
 				http.NotFound(w, r)
 				return
 			}
@@ -712,6 +717,9 @@ func (s *Server) handler() http.Handler {
 		}
 		if r.Method == "POST" && updateBusy() && r.URL.Path != "/api/logout" {
 			fail(w, 409, errors.New("выполняется обновление панели"))
+			return
+		}
+		if s.coreAPI(w, r) {
 			return
 		}
 		if s.advancedAPI(w, r) {
@@ -1008,13 +1016,13 @@ func main() {
 		fmt.Println("Package integrity OK")
 		return
 	}
+	s := newServer(*root, *listen, realRunner{})
 	if *maintain {
 		maintainLogs()
 		return
 	}
 	if *checkRouter {
 		maintainLogs()
-		s := &Server{runner: realRunner{}}
 		if e := s.checkRouter(); e != nil {
 			fmt.Fprintln(os.Stderr, e)
 			os.Exit(1)
@@ -1033,7 +1041,6 @@ func main() {
 		fmt.Println("VPN HTTPS OK")
 		return
 	}
-	s := &Server{root: *root, dir: filepath.Join(*root, "panel"), host: *listen, runner: realRunner{}, sessions: map[string]Session{}, attempts: map[string][]time.Time{}}
 	if *upgradeXray != "" {
 		if e := s.upgradeCore(*upgradeXray); e != nil {
 			log.Fatal(e)
@@ -1048,6 +1055,9 @@ func main() {
 		defer release()
 		var j coreJournal
 		if e = readJSON(s.corePath("xray-previous.json"), &j); e != nil {
+			log.Fatal(e)
+		}
+		if e := validateCoreBackup(j); e != nil {
 			log.Fatal(e)
 		}
 		j.Disabled = s.disabled()
@@ -1176,6 +1186,8 @@ func main() {
 	go s.deviceLoop()
 	go s.githubLoop()
 	go s.advancedLoop()
+	go s.coreLoop()
+	go s.cleanupLoop()
 	listener, e := net.Listen("tcp", *listen)
 	if e != nil {
 		log.Fatal(e)

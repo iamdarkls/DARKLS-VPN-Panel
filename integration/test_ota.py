@@ -25,19 +25,19 @@ esac
    try:d=get('/api/update-status');break
    except Exception:time.sleep(.03)
   c=http.client.HTTPConnection('127.0.0.1',18091,timeout=60);headers={'Origin':'http://127.0.0.1:18091','Content-Type':'application/json'};c.request('POST','/api/login',json.dumps({'user':'admin','password':password}),headers);r=c.getresponse();data=json.loads(r.read());assert r.status==200;cookie=r.getheader('Set-Cookie').split(';')[0];csrf=data['csrf']
-  files={'darkls-panel':Path('/tmp/darkls130host').read_bytes()}
+  files={'darkls-panel':Path('/tmp/darkls140host').read_bytes()}
   for name in ['install-update.sh','reload-dns.sh','devices-sync.sh','watch.sh']:
    s=(project/'release'/name).read_text().replace('BASE=/jffs/xray','BASE='+str(root)).replace('/jffs/scripts/usb-mount-script',str(usb)).replace('"$PANEL/darkls-panel" --update-catalog','"$PANEL/darkls-panel" --root "$BASE" --update-catalog').replace('"$PANEL/darkls-panel" --repair-instagram','"$PANEL/darkls-panel" --root "$BASE" --repair-instagram').replace('"$PANEL/darkls-panel" --sync-devices','"$PANEL/darkls-panel" --root "$BASE" --sync-devices')
    if name=='install-update.sh':
     s=s.replace('\"$PANEL/darkls-panel\" --upgrade-policy','true # native migration covered by Go fault-injection tests')
     a=s.index('ready() {');b=s.index('\nstart_and_check()',a)
     s=s[:a]+'''ready() {
-"'''+sys.executable+'''" -c 'import urllib.request,json;assert json.load(urllib.request.urlopen("http://127.0.0.1:18091/api/update-status",timeout=1))["version"]=="1.3.0"'
+"'''+sys.executable+'''" -c 'import urllib.request,json;assert json.load(urllib.request.urlopen("http://127.0.0.1:18091/api/update-status",timeout=1))["version"]=="1.4.0"'
 }
 '''+s[b:]
     s='\n'.join('  true # no external probe in OTA fixture' if "(trap '' HUP;" in line else line for line in s.splitlines())+'\n'
    files[name]=s.encode()
-  m={'format':1,'version':'1.3.0','arch':'amd64','files':{name:{'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)} for name,b in files.items()}}
+  m={'format':1,'version':'1.4.0','arch':'amd64','files':{name:{'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)} for name,b in files.items()}}
   buf=io.BytesIO()
   with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
    for name,b in files.items():z.writestr('darkls-panel-update/'+name,b)
@@ -54,9 +54,9 @@ esac
    except (ConnectionError,OSError,http.client.HTTPException):pass
    time.sleep(.2)
   else:raise AssertionError('OTA timeout '+str(d))
-  assert d['version']=='1.3.0',d
+  assert d['version']=='1.4.0',d
   c=http.client.HTTPConnection('127.0.0.1',18091,timeout=5);c.request('POST','/api/login',json.dumps({'user':'admin','password':password}),{'Origin':'http://127.0.0.1:18091','Content-Type':'application/json'});r=c.getresponse();r.read();assert r.status==200;c.close()
-  assert (panel/'darkls-panel.previous').exists();print('Authenticated OTA upload -> staging -> separate worker -> server restart -> version 1.3.0 -> unchanged password: PASS')
+  assert (panel/'darkls-panel.previous').exists();print('Authenticated OTA upload -> staging -> separate worker -> server restart -> version 1.4.0 -> unchanged password: PASS')
  finally:
   pidfile=Path('/tmp/darkls-panel.pid')
   if pidfile.exists():

@@ -300,9 +300,9 @@ func (s *Server) storageItems() []StorageItem {
 	}
 	dir := "/tmp/mnt/WINDOWS_10/darkls-vpn-backups"
 	entries, _ = os.ReadDir(dir)
-	pat := regexp.MustCompile(`^xray-before-[0-9.]+-[0-9]+$`)
+
 	for _, e := range entries {
-		if pat.MatchString(e.Name()) {
+		if coreBackupName.MatchString(e.Name()) {
 			add("core:"+e.Name(), e.Name(), "xray", filepath.Join(dir, e.Name()), "Откат к этой копии ядра станет недоступен. Действующее ядро в JFFS не удаляется.")
 		}
 	}
@@ -312,11 +312,10 @@ func (s *Server) deleteStorage(id string) error {
 	if updateBusy() {
 		return errors.New("выполняется обновление")
 	}
-	for _, p := range []string{"apply-journal.json", "xray-update-journal.json", "profile-switch-journal.json"} {
-		if _, e := os.Stat(filepath.Join(s.dir, p)); e == nil {
-			return errors.New("есть незавершённая операция; сначала восстановите её")
-		}
+	if s.pendingRecovery() {
+		return errors.New("есть незавершённая операция; сначала восстановите её")
 	}
+
 	for _, item := range s.storageItems() {
 		if item.ID == id {
 			if e := os.RemoveAll(item.path); e != nil {

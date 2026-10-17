@@ -13,3 +13,6 @@
 /state.json
 /backups/
 __pycache__/
+
+/bench/rss-supervisor
+/bench/results.json

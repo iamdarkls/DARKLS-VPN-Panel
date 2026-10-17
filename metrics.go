@@ -91,14 +91,10 @@ func (s *Server) metrics() map[string]any {
 	var fs syscall.Statfs_t
 	_ = syscall.Statfs(s.root, &fs)
 	processes := map[string]any{"panel": processMemory("/proc/self/status")}
-	if out, e := s.run("pidof", "xray"); e == nil {
-		for _, pid := range strings.Fields(string(out)) {
-			if _, e := strconv.Atoi(pid); e == nil {
-				processes["xray"] = processMemory("/proc/" + pid + "/status")
-				break
-			}
-		}
+	if pids := s.mainXrayPIDs(); len(pids) > 0 {
+		processes["xray"] = processMemory("/proc/" + pids[0] + "/status")
 	}
+
 	mounts, _ := os.ReadFile("/proc/mounts")
 	usb := strings.Contains(string(mounts), " /tmp/mnt/")
 	return map[string]any{"cpu_percent": cpu, "cpu_cores": runtime.NumCPU(), "load": load, "uptime_seconds": uptime, "memory_total_kib": m["MemTotal"], "memory_available_kib": available, "jffs_total_bytes": fs.Blocks * uint64(fs.Bsize), "jffs_free_bytes": fs.Bavail * uint64(fs.Bsize), "processes": processes, "usb": usb}

@@ -10,7 +10,9 @@ LOG_RESTART=0
 grep -q '^Uid:[[:space:]]*0[[:space:]]' /proc/self/status || exit 1
 grep -q 'DARKLS_PANEL_INTEGRATION' "$BASE/watch.sh" || { echo 'Install panel first'; exit 1; }
 test -s "$PANEL/auth.json"
-[ ! -f "$PANEL/apply-journal.json" ] || { echo "Finish or recover pending settings operation first"; exit 1; }
+for journal in apply-journal.json xray-update-journal.json profile-switch-journal.json; do
+ [ ! -f "$PANEL/$journal" ] || { echo "Finish or recover pending operation first"; exit 1; }
+done
 chmod 700 "$PKG/darkls-panel"
 TARGET=$("$PKG/darkls-panel" --version)
 "$PKG/darkls-panel" --verify-package "$PKG"

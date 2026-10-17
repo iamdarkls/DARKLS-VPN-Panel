@@ -223,37 +223,13 @@ func (s *Server) uploadUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
-	job := UpdateJob{ID: token()[:16], Phase: "staged", Target: m.Version, Message: "Пакет проверен, начинается установка", Started: time.Now().Unix()}
-	if e = atomicWrite(updateJobPath, jsonBytes(job)); e != nil {
-		os.RemoveAll(dir)
-		fail(w, 500, e)
-		return
-	}
-	cmd := exec.Command(filepath.Join(s.dir, "darkls-panel"), "--root", s.root, "--install-staged", dir)
-	logFile, e := os.OpenFile("/tmp/darkls-update-worker.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	job, e := s.launchUpdate(dir, m.Version)
 	if e != nil {
-		job.Phase = "error"
-		job.Message = "Не удалось открыть журнал обновления"
-		_ = atomicWrite(updateJobPath, jsonBytes(job))
 		os.RemoveAll(dir)
 		fail(w, 500, e)
 		return
 	}
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.Stdin = nil
-	if e = cmd.Start(); e != nil {
-		logFile.Close()
-		os.RemoveAll(dir)
-		job.Phase = "error"
-		job.Message = "Не удалось запустить установщик"
-		_ = atomicWrite(updateJobPath, jsonBytes(job))
-		fail(w, 500, e)
-		return
-	}
-	logFile.Close()
-	go cmd.Wait()
-	appendEvent("update", "Начата установка панели "+m.Version)
+
 	respond(w, 202, map[string]any{"ok": true, "job": job})
 }
 func (s *Server) installStaged(dir string) (err error) {

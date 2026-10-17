@@ -80,7 +80,7 @@ func TestReleaseDiscoveryVerifiesSignatureTagAndExactAssetURL(t *testing.T) {
 	m := SignedRelease{1, "panel", githubRepository, "9.0.0", runtime.GOARCH, "DARKLS-VPN-Panel-v9.0.0.zip", strings.Repeat("a", 64), 100}
 	data, _ := json.Marshal(m)
 	sig := []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(key, data)))
-	rel := ghRelease{Tag: "v9.0.0", Body: "Release notes", Assets: []ghAsset{{"panel-release.json", "https://github.com/mf", int64(len(data))}, {"panel-release.sig", "https://github.com/sig", int64(len(sig))}, {m.Asset, assetURL, 100}}}
+	rel := ghRelease{Tag: "v9.0.0", Body: "Release notes", Assets: []ghAsset{{"panel-release.json", "https://github.com/mf", int64(len(data)), ""}, {"panel-release.sig", "https://github.com/sig", int64(len(sig)), ""}, {m.Asset, assetURL, 100, ""}}}
 	get := func(_ context.Context, u string, _ int64) ([]byte, error) {
 		switch u {
 		case "https://github.com/mf":

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,9 +88,7 @@ func (s *Server) restartMainXray() error {
 	return s.startMainXray()
 }
 func transportClient(proxyAddress string) *http.Client {
-	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM(githubRoots)
-	roots.AppendCertsFromPEM(probeRoots)
+	roots := sharedRoots()
 	var proxy *url.URL
 	if proxyAddress != "" {
 		proxy, _ = url.Parse("socks5h://" + proxyAddress)

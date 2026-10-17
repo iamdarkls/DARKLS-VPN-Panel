@@ -23,6 +23,7 @@ type coreJournal struct {
 	Backup   string `json:"backup"`
 	Hash     string `json:"hash"`
 	Disabled bool   `json:"disabled"`
+	Version  string `json:"version,omitempty"`
 }
 
 func fileHash(path string) (string, error) {
@@ -58,6 +59,20 @@ func copyFileChecked(src, dst string, mode os.FileMode) error {
 	return e
 }
 func (s *Server) corePath(name string) string { return filepath.Join(s.dir, name) }
+func (s *Server) stopXrayProcess() error {
+	for _, p := range s.mainXrayPIDs() {
+		if _, e := s.run("kill", p); e != nil {
+			return e
+		}
+	}
+	for i := 0; i < 30; i++ {
+		if len(s.mainXrayPIDs()) == 0 {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("Xray не остановился; замена отменена")
+}
 func (s *Server) stopCore() error {
 	if out, e := s.run("sh", filepath.Join(s.root, "vpn.sh"), "stop"); e != nil {
 		return fmt.Errorf("stop routing: %s", limited(out))
@@ -72,10 +87,10 @@ func (s *Server) stopCore() error {
 	return errors.New("Xray did not stop; binary was not removed")
 }
 func (s *Server) restoreCore(j coreJournal) error {
-	h, e := fileHash(j.Backup)
-	if e != nil || h != j.Hash {
-		return errors.New("previous Xray backup unavailable or corrupt; keep USB connected")
+	if e := validateCoreBackup(j); e != nil {
+		return e
 	}
+	var e error
 	if e = s.stopCore(); e != nil {
 		return e
 	}
@@ -121,7 +136,10 @@ func (s *Server) recoverCoreJournal() error {
 	appendEvent("xray", "Прерванное обновление Xray отменено; прежнее ядро восстановлено")
 	return nil
 }
-func (s *Server) upgradeCore(candidate string) (err error) {
+func (s *Server) upgradeCore(candidate string) error {
+	return s.installCore(candidate, xrayTargetVersion, xrayTargetHash)
+}
+func (s *Server) installCore(candidate, targetVersion, targetHash string) (err error) {
 	release, e := s.pause()
 	if e != nil {
 		return e
@@ -130,18 +148,16 @@ func (s *Server) upgradeCore(candidate string) (err error) {
 	if updateBusy() {
 		return errors.New("panel update is active")
 	}
-	if _, e = os.Stat(s.corePath("apply-journal.json")); e == nil {
-		return errors.New("settings recovery pending")
+	if s.pendingRecovery() {
+		return errors.New("сначала завершите восстановление предыдущей операции")
 	}
-	if _, e = os.Stat(s.corePath("xray-update-journal.json")); e == nil {
-		return errors.New("Xray recovery pending; restart panel before retrying")
-	}
+
 	h, e := fileHash(candidate)
 	if e != nil {
 		return e
 	}
-	if h != xrayTargetHash {
-		return errors.New("Xray SHA256 mismatch; only official 26.10.10 arm64 accepted")
+	if h != targetHash {
+		return errors.New("Xray SHA256 не совпала с проверенным кандидатом")
 	}
 	if e = checkELF(candidate, "arm64"); e != nil {
 		return e
@@ -150,8 +166,11 @@ func (s *Server) upgradeCore(candidate string) (err error) {
 		return e
 	}
 	out, e := s.run(candidate, "version")
-	if e != nil || !strings.HasPrefix(string(out), "Xray "+xrayTargetVersion+" ") {
+	if e != nil || !strings.HasPrefix(string(out), "Xray "+targetVersion+" ") {
 		return errors.New("unexpected Xray version")
+	}
+	if current := s.currentCoreVersion(); current != "" && !releaseAtLeast(targetVersion, current) {
+		return errors.New("понижение версии Xray запрещено")
 	}
 	out, e = s.run(candidate, "run", "-test", "-config", filepath.Join(s.root, "config-vpn.json"))
 	if e != nil {
@@ -176,18 +195,15 @@ func (s *Server) upgradeCore(candidate string) (err error) {
 	if e = syscall.Statfs(s.root, &fs); e != nil {
 		return e
 	}
-	oldAllocated := old.Size()
-	if st, ok := old.Sys().(*syscall.Stat_t); ok {
-		oldAllocated = st.Blocks * 512
+	if old.Size() <= 0 || next.Size() <= 0 || int64(fs.Bavail)*int64(fs.Bsize) < 4<<20 {
+		return errors.New("нужно минимум 4 МиБ свободного JFFS; резервная копия хранится на USB")
 	}
-	if int64(fs.Bavail)*int64(fs.Bsize)+oldAllocated < next.Size()+(2<<20) {
-		return errors.New("not enough JFFS space for new core plus 2 MiB reserve")
-	}
+
 	backupDir := filepath.Join(usb, "darkls-vpn-backups")
 	if e = os.MkdirAll(backupDir, 0700); e != nil {
 		return e
 	}
-	backup := filepath.Join(backupDir, fmt.Sprintf("xray-before-%s-%d", xrayTargetVersion, time.Now().UnixNano()))
+	backup := filepath.Join(backupDir, fmt.Sprintf("xray-before-%s-%d", targetVersion, time.Now().UnixNano()))
 	hash, e := fileHash(target)
 	if e != nil {
 		return e
@@ -199,13 +215,22 @@ func (s *Server) upgradeCore(candidate string) (err error) {
 	if e != nil || bh != hash {
 		return errors.New("USB backup verification failed")
 	}
-	j := coreJournal{Backup: backup, Hash: hash, Disabled: s.disabled()}
+	if d, e := os.Open(backupDir); e == nil {
+		_ = d.Sync()
+		d.Close()
+	}
+	j := coreJournal{Backup: backup, Hash: hash, Disabled: s.disabled(), Version: s.currentCoreVersion()}
 	journal := s.corePath("xray-update-journal.json")
 	if e = atomicWrite(journal, jsonBytes(j)); e != nil {
 		return e
 	}
+	changed := false
 	defer func() {
 		if err != nil {
+			if !changed {
+				_ = os.Remove(journal)
+				return
+			}
 			if re := s.restoreCore(j); re != nil {
 				err = fmt.Errorf("%v; automatic rollback failed: %v; journal retained", err, re)
 			} else {
@@ -213,41 +238,59 @@ func (s *Server) upgradeCore(candidate string) (err error) {
 			}
 		}
 	}()
-	if e = s.stopCore(); e != nil {
+	if e = s.stopXrayProcess(); e != nil {
 		return e
 	}
+	changed = true
 	if e = os.Remove(target); e != nil {
 		return e
 	}
 	if e = copyFileChecked(candidate, target+".new", 0700); e != nil {
 		return e
 	}
-	if got, e := fileHash(target + ".new"); e != nil || got != xrayTargetHash {
+	if got, e := fileHash(target + ".new"); e != nil || got != targetHash {
 		return errors.New("installed Xray integrity check failed")
 	}
 	if e = os.Rename(target+".new", target); e != nil {
 		return e
 	}
+
 	if !j.Disabled {
-		out, e = s.run("sh", filepath.Join(s.root, "vpn.sh"), "start")
-		if e != nil {
-			return fmt.Errorf("new Xray startup: %s", limited(out))
+		if e = s.startMainXray(); e != nil {
+			return e
 		}
+		if e = s.checkRouter(); e != nil {
+			return fmt.Errorf("после обновления DNS/правила не прошли проверку: %w", e)
+		}
+		started := time.Now()
 		if e = checkVPNConnection(); e != nil {
 			time.Sleep(2 * time.Second)
-			e = checkVPNConnection()
-			if e != nil {
+			if e = checkVPNConnection(); e != nil {
+				recordProbe(e, time.Since(started))
 				return e
 			}
 		}
+		recordProbe(nil, time.Since(started))
 	}
+	if e = syscall.Statfs(s.root, &fs); e != nil || int64(fs.Bavail)*int64(fs.Bsize) < 2<<20 {
+		return errors.New("после записи ядра осталось меньше 2 МиБ; выполняем откат")
+	}
+
 	if e = atomicWrite(s.corePath("xray-previous.json"), jsonBytes(j)); e != nil {
 		return e
 	}
 	if e = os.Remove(journal); e != nil {
 		return e
 	}
-	appendEvent("xray", "Xray обновлён до "+xrayTargetVersion+"; прежнее ядро сохранено на USB")
-	fmt.Println("Xray " + xrayTargetVersion + " installed; previous binary: " + backup)
+	appendEvent("xray", "Xray обновлён до "+targetVersion+"; прежнее ядро сохранено на USB")
+	fmt.Println("Xray " + targetVersion + " installed; previous binary: " + backup)
+	return nil
+}
+
+func validateCoreBackup(j coreJournal) error {
+	h, e := fileHash(j.Backup)
+	if e != nil || h != j.Hash {
+		return errors.New("previous Xray backup unavailable or corrupt; keep USB connected")
+	}
 	return nil
 }
