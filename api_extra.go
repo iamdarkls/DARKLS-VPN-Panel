@@ -142,7 +142,7 @@ func (s *Server) diagnose(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_, hookErr := s.run("iptables", "-t", "nat", "-C", "PREROUTING", "-i", "br0", "-s", "192.168.50.0/24", "-j", "DV_NAT")
-	natRules, _ := s.run("iptables", "-t", "nat", "-S", "DV_NAT")
+	natRules := []byte(s.expandedChain("nat", "DV_NAT"))
 	routesActive := hookErr == nil
 	rows := []map[string]any{}
 	for _, ip := range ips {

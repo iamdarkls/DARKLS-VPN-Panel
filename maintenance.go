@@ -52,7 +52,7 @@ func trimLog(path string, maximum, keep int64) error {
 	return nil
 }
 func maintainLogs() {
-	for _, name := range []string{"xray.log", "dnsmasq-vpn.log", "darkls-panel.log", "darkls-update-worker.log"} {
+	for _, name := range []string{"xray.log", "dnsmasq-vpn.log", "darkls-panel.log", "darkls-update-worker.log", "darkls-candidate.log", "darkls-components.log"} {
 		if e := trimLog("/tmp/"+name, 2<<20, 256<<10); e != nil {
 			fmt.Fprintln(os.Stderr, "log maintenance:", name, e)
 		}
@@ -110,15 +110,7 @@ func validateRouterRules(nat, udp, input string) error {
 	return nil
 }
 func (s *Server) checkRouter() error {
-	var chains []string
-	for _, spec := range [][2]string{{"nat", "DV_NAT"}, {"mangle", "DV_UDP"}, {"filter", "DV_IN"}} {
-		out, e := s.run("iptables", "-t", spec[0], "-S", spec[1])
-		if e != nil {
-			return fmt.Errorf("read chain %s: %w", spec[1], e)
-		}
-		chains = append(chains, string(out))
-	}
-	if e := validateRouterRules(chains[0], chains[1], chains[2]); e != nil {
+	if e := s.checkRoutingOnly(); e != nil {
 		return e
 	}
 	// Random names avoid a stale positive DNS-cache entry hiding a dead upstream.

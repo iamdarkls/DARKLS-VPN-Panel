@@ -37,7 +37,7 @@ healthy() {
 
 recover() {
   date
-  echo "Restoring VPN: $REASON"
+  echo "Checking failed VPN components: $REASON"
   "$BIN" --watch-recover --reason "$REASON" || echo 'Recovery failed; will retry'
   last_recovery=$(awk '{print int($1)}' /proc/uptime)
   last_probe=$last_recovery
@@ -77,6 +77,7 @@ while :; do
       date
       echo "VPN HTTPS failed, consecutive checks: $failures"
       cat /tmp/darkls-vpn-probe.log
+      if [ "$failures" -eq 1 ]; then "$BIN" --check-components > /tmp/darkls-components.log 2>&1; fi
       if [ "$failures" -ge 2 ] && [ $((now - last_recovery)) -ge 180 ]; then
         REASON='HTTPS traffic failed on both probe destinations twice'
         recover

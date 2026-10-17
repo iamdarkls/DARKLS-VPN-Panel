@@ -38,14 +38,19 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.2.0"
+var version = "1.3.0"
 
 type Group struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Enabled  bool     `json:"enabled"`
-	Domains  []string `json:"domains"`
-	Category string   `json:"category,omitempty"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Enabled       bool     `json:"enabled"`
+	Domains       []string `json:"domains"`
+	Category      string   `json:"category,omitempty"`
+	BlockQUIC     *bool    `json:"block_quic,omitempty"`
+	EnabledUntil  int64    `json:"enabled_until,omitempty"`
+	TimedPrevious bool     `json:"timed_previous,omitempty"`
+	QUICUntil     int64    `json:"quic_until,omitempty"`
+	QUICPrevious  bool     `json:"quic_previous,omitempty"`
 }
 type State struct {
 	Version int          `json:"version"`
@@ -86,6 +91,7 @@ type Server struct {
 	diagnosticMu    sync.Mutex
 	metricsMu       sync.Mutex
 	githubMu        sync.Mutex
+	historyMu       sync.Mutex
 	lastCPU         cpuSample
 }
 
@@ -185,6 +191,12 @@ func validate(st State) (State, error) {
 	for i := range st.Groups {
 		g := &st.Groups[i]
 		g.Name = strings.TrimSpace(g.Name)
+		if g.BlockQUIC == nil {
+			g.BlockQUIC = boolRef(g.ID == "youtube")
+		}
+		if g.EnabledUntil < 0 || g.QUICUntil < 0 || (time.Now().Year() >= 2025 && (g.EnabledUntil > time.Now().Add(8*24*time.Hour).Unix() || g.QUICUntil > time.Now().Add(8*24*time.Hour).Unix())) {
+			return st, errors.New("неверный срок временной настройки")
+		}
 		if !idPattern.MatchString(g.ID) || ids[g.ID] {
 			return st, errors.New("неверный или повторяющийся идентификатор группы")
 		}
@@ -271,7 +283,7 @@ func importState(domains []byte) (State, error) {
 func activeDomains(st State) []string {
 	m := map[string]bool{}
 	for _, g := range st.Groups {
-		if g.Enabled {
+		if g.active(time.Now().Unix()) {
 			for _, d := range g.Domains {
 				m[d] = true
 			}
@@ -476,7 +488,7 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 	if expected != s.revision() {
 		return "", errors.New("CONFLICT: настройки изменились; обновите страницу")
 	}
-	config := dnsConfig(activeDomains(st))
+	config := dnsConfigForState(st)
 	tmp := filepath.Join(s.dir, "dnsmasq-candidate.conf")
 	if err = atomicWrite(tmp, config); err != nil {
 		return "", err
@@ -507,6 +519,12 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 	if err != nil {
 		return "", err
 	}
+	routingChanged := policyChanged(oldState, st)
+	if !s.disabled() && (routingChanged || !bytes.Equal(oldConfig, config)) {
+		if err = s.ensureGroupSets(st); err != nil {
+			return "", err
+		}
+	}
 	backup, err = s.backup()
 	if err != nil {
 		return "", err
@@ -519,6 +537,11 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 		if err != nil {
 			re := s.restoreFiles(backup)
 			rr := s.reloadRouting(true, true)
+			if re == nil {
+				if pe := s.syncGroupRouting(); pe != nil && rr == nil {
+					rr = pe
+				}
+			}
 			if de := s.syncDevices(true); de != nil && rr == nil {
 				rr = de
 			}
@@ -556,6 +579,11 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 	}
 	if !bytes.Equal(jsonBytes(oldState.Policy), jsonBytes(st.Policy)) {
 		if err = s.syncDevices(true); err != nil {
+			return backup, err
+		}
+	}
+	if routingChanged || !bytes.Equal(oldConfig, config) {
+		if err = s.syncGroupRouting(); err != nil {
 			return backup, err
 		}
 	}
@@ -666,7 +694,7 @@ func (s *Server) handler() http.Handler {
 				w.WriteHeader(405)
 				return
 			}
-			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" {
+			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" && r.URL.Path != "/advanced.js" {
 				http.NotFound(w, r)
 				return
 			}
@@ -684,6 +712,9 @@ func (s *Server) handler() http.Handler {
 		}
 		if r.Method == "POST" && updateBusy() && r.URL.Path != "/api/logout" {
 			fail(w, 409, errors.New("выполняется обновление панели"))
+			return
+		}
+		if s.advancedAPI(w, r) {
 			return
 		}
 		if s.extraAPI(w, r) {
@@ -948,6 +979,10 @@ func main() {
 	initAuth := flag.Bool("init", false, "создать пароль и импортировать списки")
 	reset := flag.Bool("reset-password", false, "создать новый пароль")
 	watchRecover := flag.Bool("watch-recover", false, "восстановить маршрутизацию из автоконтроля")
+	syncGroups := flag.Bool("sync-groups", false, "восстановить правила групп без перезапуска Xray")
+	upgradePolicy := flag.Bool("upgrade-policy", false, "мигрировать правила групп")
+	recoverParts := flag.Bool("recover-components", false, "точечное восстановление VPN")
+	checkParts := flag.Bool("check-components", false, "проверить компоненты соединения")
 	repairIG := flag.Bool("repair-instagram", false, "добавить недостающий домен проверки Instagram один раз")
 	updateCatalog := flag.Bool("update-catalog", false, "добавить отсутствующие группы выключенными")
 	checkVPN := flag.Bool("check-vpn", false, "проверить HTTPS через локальный SOCKS Xray")
@@ -1041,6 +1076,35 @@ func main() {
 		}
 		return
 	}
+	if *syncGroups {
+		if e := s.syncGroupRouting(); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
+	if *upgradePolicy {
+		if e := s.upgradeGroupPolicy(); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
+	if *checkParts {
+		snap := s.collectConnectivity(true)
+		s.saveConnectivity(snap)
+		fmt.Println(string(jsonBytes(snap)))
+		return
+	}
+	if *recoverParts {
+		release, e := s.pause()
+		if e != nil {
+			log.Fatal(e)
+		}
+		defer release()
+		if e = s.recoverComponents(*reason); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
 	if *repairIG {
 		if e := s.repairInstagram(); e != nil {
 			log.Fatal(e)
@@ -1073,17 +1137,19 @@ func main() {
 			log.Print("Незавершённое применение: ожидаем восстановления панелью")
 			return
 		}
-		out, e := s.run("sh", filepath.Join(s.root, "vpn.sh"), "start")
-		fmt.Print(string(out))
+		e = s.recoverComponents(*reason)
+		fmt.Println("Component recovery checked")
 		if e != nil {
 			release()
 			log.Print(e)
 			os.Exit(1)
 		}
-		recordRecovery(*reason)
 		return
 	}
 	if e := s.recoverCoreJournal(); e != nil {
+		log.Fatal(e)
+	}
+	if e := s.recoverProfileSwitch(); e != nil {
 		log.Fatal(e)
 	}
 	authPath := filepath.Join(s.dir, "auth.json")
@@ -1109,6 +1175,7 @@ func main() {
 	}
 	go s.deviceLoop()
 	go s.githubLoop()
+	go s.advancedLoop()
 	listener, e := net.Listen("tcp", *listen)
 	if e != nil {
 		log.Fatal(e)

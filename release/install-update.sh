@@ -39,6 +39,11 @@ if grep -q ' > /tmp/xray.log' "$BASE/vpn.sh.new"; then LOG_RESTART=1; fi
 # Use append descriptors so in-place log trimming cannot create sparse holes.
 sed 's/ > \/tmp\/xray.log/ >> \/tmp\/xray.log/' "$BASE/vpn.sh.new" > "$BASE/vpn.sh.logfix"
 mv "$BASE/vpn.sh.logfix" "$BASE/vpn.sh.new"
+# Native group rules run after all legacy hooks, avoiding duplicate hooks.
+if ! grep -q DARKLS_GROUP_POLICY_HOOK "$BASE/vpn.sh.new"; then
+ awk '/^trap - 0/ { print "# DARKLS_GROUP_POLICY_HOOK"; print "\"$BASE/panel/darkls-panel\" --sync-groups" } {print}' "$BASE/vpn.sh.new" > "$BASE/vpn.sh.groupfix"
+ mv "$BASE/vpn.sh.groupfix" "$BASE/vpn.sh.new"
+fi
 sh -n "$BASE/vpn.sh.new"
 sh -n "$BASE/watch.sh.new"
 
@@ -75,7 +80,8 @@ rollback() {
   done
   rm -f /tmp/darkls-device-digest
   if [ -f "$ROLL/instagram-fbsbx-migrated.absent" ]; then rm -f "$PANEL/instagram-fbsbx-migrated"; else cp -p "$ROLL/instagram-fbsbx-migrated" "$PANEL/instagram-fbsbx-migrated"; fi
-  if [ ! -f "$BASE/autostart.disabled" ]; then sh "$PANEL/reload-dns.sh" || true; fi
+  if [ ! -f "$BASE/autostart.disabled" ]; then sh "$BASE/vpn.sh" start || true; fi
+  rm -f "$PANEL/policy-v130.ready"
   if start_and_check; then touch "$PKG/rollback.ok"; echo 'Previous panel restored'; else echo 'Rollback startup failed; see /tmp/darkls-panel.log'; fi
 }
 finish() {
@@ -125,6 +131,7 @@ chmod 700 "$BASE/watch.sh" "$BASE/vpn.sh"
 "$PANEL/darkls-panel" --update-catalog
 "$PANEL/darkls-panel" --repair-instagram
 "$PANEL/darkls-panel" --sync-devices --force-devices
+"$PANEL/darkls-panel" --upgrade-policy
 if [ "$LOG_RESTART" -eq 1 ] && [ ! -f "$BASE/autostart.disabled" ]; then
   echo 'Reopening Xray log in append mode; VPN connections will reconnect once'
   sh "$BASE/vpn.sh" start

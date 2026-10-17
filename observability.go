@@ -87,7 +87,7 @@ func recordRecovery(reason string) {
 }
 
 var secretUUID = regexp.MustCompile(`(?i)[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`)
-var secretURL = regexp.MustCompile(`(?i)(vless|vmess|trojan)://[^\s]+`)
+var secretURL = regexp.MustCompile(`(?i)(vless|vmess|trojan|ss|hysteria2?)://[^\s"'\\<>]+`)
 
 func redact(s string) string {
 	s = secretURL.ReplaceAllString(s, "[VPN URI скрыт]")

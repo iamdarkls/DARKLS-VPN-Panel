@@ -17,12 +17,13 @@ n=0
 [ ! -f "'''+str(home/'attempts')+'''" ] || n=$(cat "'''+str(home/'attempts')+'''" )
 n=$((n+1));echo "$n" > "'''+str(home/'attempts')+'''"
 '''+('if [ "$n" -eq 1 ]; then exit 0; fi\n' if fail_first else '')+'echo '+str(os.getpid())+' > "'+str(temp/'darkls-panel.pid')+'"\n')
-  shutil.copy('/tmp/darkls120host',pkg/'darkls-panel')
+  shutil.copy('/tmp/darkls130host',pkg/'darkls-panel')
   for name in ['install-update.sh','reload-dns.sh','devices-sync.sh','watch.sh']:
    s=(project/'release'/name).read_text().replace('BASE=/jffs/xray','BASE='+str(root)).replace('/jffs/scripts/usb-mount-script',str(startup)).replace('"$PANEL/darkls-panel" --update-catalog','"$PANEL/darkls-panel" --root "$BASE" --update-catalog').replace('"$PANEL/darkls-panel" --repair-instagram','"$PANEL/darkls-panel" --root "$BASE" --repair-instagram').replace('"$PANEL/darkls-panel" --sync-devices','"$PANEL/darkls-panel" --root "$BASE" --sync-devices').replace('"/proc/$current_pid/cmdline"','"$PANEL/test-cmdline"').replace('/tmp/darkls-',str(temp)+'/darkls-').replace('/tmp/xray-arm64.zip',str(temp)+'/xray-arm64.zip').replace('/tmp/asusware-usbmount.zip',str(temp)+'/asusware-usbmount.zip')
+   s=s.replace('\"$PANEL/darkls-panel\" --upgrade-policy','true # native migration is covered by Go fault-injection tests')
    s='\n'.join('  true # probe omitted in fixture' if "(trap '' HUP;" in line else line for line in s.splitlines())+'\n'
    (pkg/name).write_text(s)
-  manifest={'format':1,'version':'1.2.0','arch':'amd64','files':{}}
+  manifest={'format':1,'version':'1.3.0','arch':'amd64','files':{}}
   for name in ['darkls-panel','install-update.sh','reload-dns.sh','devices-sync.sh','watch.sh']:
    b=(pkg/name).read_bytes();manifest['files'][name]={'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)}
   (pkg/'manifest.json').write_text(json.dumps(manifest))
@@ -30,7 +31,7 @@ n=$((n+1));echo "$n" > "'''+str(home/'attempts')+'''"
   p=subprocess.run(['sh',str(pkg/'install-update.sh')],env={**os.environ,'PATH':str(mocks)+':'+os.environ['PATH']},capture_output=True,text=True,timeout=20)
   if not fail_first:
    assert p.returncode==0,(p.stdout,p.stderr)
-   assert subprocess.check_output([str(panel/'darkls-panel'),'--version'],text=True).strip()=='1.2.0'
+   assert subprocess.check_output([str(panel/'darkls-panel'),'--version'],text=True).strip()=='1.3.0'
    state=json.loads((panel/'state.json').read_text());assert state['groups'][0]['name']=='Мой YouTube' and not state['groups'][0]['enabled']
    assert 'DARKLS_DEVICE_POLICY_HOOK' in (root/'vpn.sh').read_text()
    assert not pkg.exists();print('Bootstrap success: PASS, manifest, hooks, user state, cleanup')

@@ -61,6 +61,7 @@ func checkService(ctx context.Context, domain string) ServiceResult {
 		roots = x509.NewCertPool()
 	}
 	roots.AppendCertsFromPEM(probeRoots)
+	roots.AppendCertsFromPEM(githubRoots)
 	proxy, _ := url.Parse("socks5h://127.0.0.1:10808")
 	client, tr := newProbeClient(proxy, roots)
 	defer tr.CloseIdleConnections()
@@ -97,6 +98,7 @@ func (s *Server) serviceProbe(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	result := checkService(ctx, domain)
+	s.recordService(req.Service, result)
 	appendEvent("service_probe", domain+": "+result.State)
 	respond(w, 200, result)
 }

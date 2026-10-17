@@ -11,7 +11,7 @@ const assert=require('node:assert/strict');
  assert.equal(await page.locator('.purpose-heading').count(),10);
  await page.locator('#category-filter').selectOption('adult');assert.equal(await page.locator('.card').count(),8);await page.locator('#category-filter').selectOption('');
  await page.locator('[data-view=devices]').click();await page.locator('.device-row').first().waitFor();await page.locator('#device-mode').selectOption('exclude');await page.getByRole('checkbox',{name:'Компьютер'}).check();
- const save=page.waitForResponse(r=>r.url().endsWith('/api/apply'));await page.locator('#apply').click();await save;await page.locator('#notice').filter({hasText:'Настройки применены'}).waitFor();assert.equal(await page.getByRole('checkbox',{name:'Компьютер'}).isChecked(),true);
+ const save=page.waitForResponse(r=>r.url().endsWith('/api/apply'));await page.locator('#apply').click();await page.getByRole('button',{name:'Применить эти изменения',exact:true}).click();await save;await page.locator('#notice').filter({hasText:'Изменения применены'}).waitFor();assert.equal(await page.getByRole('checkbox',{name:'Компьютер'}).isChecked(),true);
  await page.locator('[data-view=diagnostics]').click();assert.match(await page.locator('#probe-details').textContent(),/Восстановлений/);
  await page.route('**/api/probe',r=>r.fulfill({json:probe}));await page.locator('#probe-now').click();
  await page.route('**/api/diagnose',r=>r.fulfill({json:{domain:'www.youtube.com',client_ip:'192.168.50.224',device_eligible:false,groups:[{name:'YouTube',enabled:true}],addresses:[{ip:'192.0.2.5',in_vpn_set:true,via_vpn:false}]}}));
