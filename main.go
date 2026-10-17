@@ -38,7 +38,7 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.4.0"
+var version = "1.4.1"
 
 type Group struct {
 	ID            string   `json:"id"`

@@ -34,20 +34,22 @@ type CoreSettings struct {
 	Blocked     map[string]int64 `json:"blocked_versions"`
 }
 type CoreStatus struct {
-	Current   string `json:"current"`
-	Latest    string `json:"latest,omitempty"`
-	CheckedAt int64  `json:"checked_at"`
-	Available bool   `json:"available"`
-	Notes     string `json:"notes,omitempty"`
-	URL       string `json:"url"`
-	Error     string `json:"error,omitempty"`
+	Current    string `json:"current"`
+	Latest     string `json:"latest,omitempty"`
+	CheckedAt  int64  `json:"checked_at"`
+	Available  bool   `json:"available"`
+	Prerelease bool   `json:"prerelease"`
+	Notes      string `json:"notes,omitempty"`
+	URL        string `json:"url"`
+	Error      string `json:"error,omitempty"`
 }
 type CoreRelease struct {
-	Version string
-	URL     string
-	Size    int64
-	Hash    string
-	Notes   string
+	Prerelease bool
+	Version    string
+	URL        string
+	Size       int64
+	Hash       string
+	Notes      string
 }
 type CoreJob struct {
 	ID       string `json:"id"`
@@ -83,13 +85,29 @@ func newerRelease(a, b string) bool {
 }
 func fetchCoreRelease(ctx context.Context, get func(context.Context, string, int64) ([]byte, error)) (CoreRelease, error) {
 	var result CoreRelease
-	b, e := get(ctx, "https://api.github.com/repos/"+coreRepository+"/releases/latest", 256<<10)
+	b, e := get(ctx, "https://api.github.com/repos/"+coreRepository+"/releases?per_page=30", 4<<20)
 	if e != nil {
 		return result, e
 	}
+	var releases []ghRelease
+	if json.Unmarshal(b, &releases) != nil {
+		return result, errors.New("список официальных выпусков Xray не распознан")
+	}
 	var rel ghRelease
-	if json.Unmarshal(b, &rel) != nil || rel.Draft || rel.Prerelease || !strings.HasPrefix(rel.Tag, "v") || !releasePattern.MatchString(strings.TrimPrefix(rel.Tag, "v")) {
-		return result, errors.New("официальный стабильный выпуск не найден")
+	for _, candidate := range releases {
+		v := strings.TrimPrefix(candidate.Tag, "v")
+		if candidate.Draft || !strings.HasPrefix(candidate.Tag, "v") || !releasePattern.MatchString(v) {
+			continue
+		}
+		for _, asset := range candidate.Assets {
+			if asset.Name == coreAssetName && (rel.Tag == "" || newerRelease(v, strings.TrimPrefix(rel.Tag, "v"))) {
+				rel = candidate
+				break
+			}
+		}
+	}
+	if rel.Tag == "" {
+		return result, errors.New("официальный выпуск Xray для Linux ARM64 не найден")
 	}
 	assets := map[string]ghAsset{}
 	for _, a := range rel.Assets {
@@ -127,7 +145,7 @@ func fetchCoreRelease(ctx context.Context, get func(context.Context, string, int
 	if len(notes) > 8192 {
 		notes = notes[:8192]
 	}
-	return CoreRelease{strings.TrimPrefix(rel.Tag, "v"), asset.URL, asset.Size, hash, notes}, nil
+	return CoreRelease{Version: strings.TrimPrefix(rel.Tag, "v"), URL: asset.URL, Size: asset.Size, Hash: hash, Notes: notes, Prerelease: rel.Prerelease}, nil
 }
 func (s *Server) coreStatus() CoreStatus {
 	var st CoreStatus
@@ -148,6 +166,7 @@ func (s *Server) checkCore(ctx context.Context) (CoreStatus, CoreRelease, error)
 		st.Error = s.scrub(e.Error())
 	} else {
 		st.Latest = rel.Version
+		st.Prerelease = rel.Prerelease
 		st.Available = newerRelease(rel.Version, st.Current)
 		st.Notes = rel.Notes
 		st.URL += "/tag/v" + rel.Version

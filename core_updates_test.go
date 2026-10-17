@@ -24,17 +24,17 @@ func TestOfficialCoreDiscoveryPinsArchitectureOriginAndChecksum(t *testing.T) {
 		name    string
 		change  func(*ghRelease)
 		wantErr bool
-	}{{"valid", func(*ghRelease) {}, false}, {"other owner", func(r *ghRelease) { r.Assets[0].URL = strings.Replace(r.Assets[0].URL, "XTLS", "evil", 1) }, true}, {"wrong platform", func(r *ghRelease) { r.Assets[0].Name = "Xray-linux-64.zip" }, true}, {"prerelease", func(r *ghRelease) { r.Prerelease = true }, true}, {"draft", func(r *ghRelease) { r.Draft = true }, true}, {"bad hash", func(r *ghRelease) { r.Assets[0].Digest = "sha256:00" }, true}, {"oversized", func(r *ghRelease) { r.Assets[0].Size = coreMaxArchive + 1 }, true}, {"duplicate", func(r *ghRelease) { r.Assets = append(r.Assets, r.Assets[0]) }, true}, {"bad version", func(r *ghRelease) { r.Tag = "v26.10.17/../../latest" }, true}}
+	}{{"valid", func(*ghRelease) {}, false}, {"other owner", func(r *ghRelease) { r.Assets[0].URL = strings.Replace(r.Assets[0].URL, "XTLS", "evil", 1) }, true}, {"wrong platform", func(r *ghRelease) { r.Assets[0].Name = "Xray-linux-64.zip" }, true}, {"prerelease", func(r *ghRelease) { r.Prerelease = true }, false}, {"draft", func(r *ghRelease) { r.Draft = true }, true}, {"bad hash", func(r *ghRelease) { r.Assets[0].Digest = "sha256:00" }, true}, {"oversized", func(r *ghRelease) { r.Assets[0].Size = coreMaxArchive + 1 }, true}, {"duplicate", func(r *ghRelease) { r.Assets = append(r.Assets, r.Assets[0]) }, true}, {"bad version", func(r *ghRelease) { r.Tag = "v26.10.17/../../latest" }, true}}
 	for _, x := range tests {
 		t.Run(x.name, func(t *testing.T) {
 			var rel ghRelease
 			_ = json.Unmarshal(jsonBytes(good), &rel)
 			x.change(&rel)
 			get := func(_ context.Context, u string, _ int64) ([]byte, error) {
-				if u != "https://api.github.com/repos/XTLS/Xray-core/releases/latest" {
+				if u != "https://api.github.com/repos/XTLS/Xray-core/releases?per_page=30" {
 					t.Fatal("unexpected URL", u)
 				}
-				return jsonBytes(rel), nil
+				return jsonBytes([]ghRelease{rel}), nil
 			}
 			r, e := fetchCoreRelease(context.Background(), get)
 			if (e != nil) != x.wantErr {
@@ -54,7 +54,7 @@ func TestCoreChecksumFallbackMatchesOfficialDigestFormat(t *testing.T) {
 		if strings.HasSuffix(u, ".dgst") {
 			return []byte("MD5= 123\nSHA2-256= " + strings.Repeat("b", 64) + "\nSHA2-512= unused\n"), nil
 		}
-		return jsonBytes(r), nil
+		return jsonBytes([]ghRelease{r}), nil
 	}
 	out, e := fetchCoreRelease(context.Background(), get)
 	if e != nil || out.Hash != strings.Repeat("b", 64) {
@@ -241,5 +241,38 @@ func TestCoreAPIMutationsRequireSessionAndCSRF(t *testing.T) {
 	w := request(s, "POST", "/api/xray-settings", `{}`, cookie, "", "http://"+s.host, s.host)
 	if w.Code != 403 || len(r.calls) != before {
 		t.Fatal("CSRF failure reached core", w.Code)
+	}
+}
+
+func TestCoreDiscoverySelectsNewestNumericReleaseIncludingPrereleases(t *testing.T) {
+	makeRelease := func(v string, pre bool) ghRelease {
+		r := coreReleaseFixture()
+		r.Tag = "v" + v
+		r.Prerelease = pre
+		r.Assets[0].URL = "https://github.com/" + coreRepository + "/releases/download/" + r.Tag + "/" + coreAssetName
+		return r
+	}
+	stable := makeRelease("26.3.27", false)
+	preview := makeRelease("26.10.17", true)
+	draft := makeRelease("26.12.31", true)
+	draft.Draft = true
+	missing := makeRelease("26.11.1", true)
+	missing.Assets = nil
+	for _, list := range [][]ghRelease{{stable, preview, draft, missing}, {draft, missing, preview, stable}} {
+		out, err := fetchCoreRelease(context.Background(), func(context.Context, string, int64) ([]byte, error) {
+			return jsonBytes(list), nil
+		})
+		if err != nil || out.Version != "26.10.17" || !out.Prerelease {
+			t.Fatalf("wrong newest release: %+v %v", out, err)
+		}
+	}
+	preview.Assets[0].Digest = "sha256:invalid"
+	if _, err := fetchCoreRelease(context.Background(), func(context.Context, string, int64) ([]byte, error) {
+		return jsonBytes([]ghRelease{stable, preview}), nil
+	}); err == nil {
+		t.Fatal("invalid newest checksum silently fell back to older stable release")
+	}
+	if newerRelease("26.3.27", "26.10.10") {
+		t.Fatal("older stable version offered as upgrade")
 	}
 }

@@ -2,7 +2,6 @@
 
 Актуальное руководство находится в [README.md](README.md).
 
-- [Обновления и история версий](CHANGELOG.md)
 - [Устройство проекта и восстановление](docs/ARCHITECTURE.md)
 - [Источники каталога сервисов](CATALOG_SOURCES.md)
 - [Источники каталога 18+](ADULT_DOMAINS_SOURCES.md)

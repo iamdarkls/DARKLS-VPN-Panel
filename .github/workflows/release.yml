@@ -19,6 +19,7 @@ jobs:
           cache: false
       - run: go test -race ./...
       - run: go vet ./...
+      - run: python3 -m unittest discover -s tools -p "test_*.py"
   release:
     needs: test
     runs-on: ubuntu-24.04
@@ -39,6 +40,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: python3 build_release.py --version "${RELEASE_TAG#v}"
+      - name: Prepare release changelog
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: python3 tools/release_notes.py --version "${RELEASE_TAG#v}" --output dist/release-notes.md
       - name: Sign release metadata
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
@@ -48,4 +53,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: gh release create "$RELEASE_TAG" "dist/DARKLS-VPN-Panel-${RELEASE_TAG}.zip" dist/panel-release.json dist/panel-release.sig --target "$GITHUB_SHA" --title "DARKLS VPN Panel ${RELEASE_TAG}" --generate-notes --latest
+        run: gh release create "$RELEASE_TAG" "dist/DARKLS-VPN-Panel-${RELEASE_TAG}.zip" dist/panel-release.json dist/panel-release.sig --target "$GITHUB_SHA" --title "DARKLS VPN Panel ${RELEASE_TAG}" --notes-file dist/release-notes.md --latest
