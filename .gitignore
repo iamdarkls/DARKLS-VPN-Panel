@@ -1,0 +1,15 @@
+/dist/
+/release/darkls-panel
+/release/manifest.json
+*.exe
+*.test
+*.zip
+*.key
+*.private
+.env
+/node_modules/
+/config*.json
+/auth.json
+/state.json
+/backups/
+__pycache__/
