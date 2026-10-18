@@ -34,7 +34,7 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.4.2"
+var version = "1.4.3"
 
 type Auth struct {
 	User string `json:"user"`
@@ -236,7 +236,7 @@ func (s *Server) handler() http.Handler {
 				fail(w, 500, e)
 				return
 			}
-			respond(w, 200, map[string]any{"state": st, "revision": s.revision()})
+			respond(w, 200, map[string]any{"state": st, "revision": s.revision(), "catalog_notes": catalogNotes})
 		case "/api/status":
 			if r.Method != "GET" {
 				w.WriteHeader(405)

@@ -92,7 +92,7 @@ func TestAdultCatalogDefaultsOffAndKeepsUserChoice(t *testing.T) {
 			st.Groups[i].Enabled = true
 		}
 	}
-	if count != 8 {
+	if count != 28 {
 		t.Fatalf("adult groups: %d", count)
 	}
 	updated, added := addCatalogGroups(st)
@@ -114,5 +114,41 @@ func TestGroupNameCountsCharactersNotUTF8Bytes(t *testing.T) {
 	st.Groups[0].Name += "Ж"
 	if _, err := validate(st); err == nil {
 		t.Fatal("overlong name accepted")
+	}
+}
+
+func TestProviderCatalogPreservesExistingGroupsAndDoesNotTouchLiveVPN(t *testing.T) {
+	original := Group{ID: "my-tiktok", Name: "Мой TikTok", Enabled: true, Category: "custom", BlockQUIC: boolRef(true), Domains: []string{"tiktok.com", "my.example"}}
+	st, added := addCatalogGroups(State{Groups: []Group{original}})
+	if added == 0 {
+		t.Fatal("catalogue was not expanded")
+	}
+	st, err := validate(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Groups[0].Name != original.Name || !st.Groups[0].Enabled || !*st.Groups[0].BlockQUIC || st.Groups[0].Category != "custom" || len(st.Groups[0].Domains) != 2 {
+		t.Fatal("custom service was overwritten")
+	}
+	want := map[string]string{"spotify": "music", "netflix": "video", "claude": "ai", "notion": "work", "miro": "work", "canva": "work", "adobe": "work", "autodesk": "work", "wrike": "work"}
+	for _, g := range st.Groups[1:] {
+		if g.ID == "tiktok" {
+			t.Fatal("custom TikTok duplicated")
+		}
+		if g.Enabled {
+			t.Fatal("new service automatically enabled", g.ID)
+		}
+		if category, ok := want[g.ID]; ok {
+			if g.Category != category || catalogNotes[g.ID] == "" {
+				t.Fatal("missing category or provider note", g.ID)
+			}
+			delete(want, g.ID)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatal("missing services", want)
+	}
+	if again, n := addCatalogGroups(st); n != 0 || len(again.Groups) != len(st.Groups) {
+		t.Fatal("catalogue not idempotent")
 	}
 }

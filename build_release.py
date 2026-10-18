@@ -2,7 +2,7 @@
 """Build the compact Linux runtime package accepted by both SSH and panel upload."""
 import argparse,hashlib,json,os,pathlib,re,subprocess,zipfile
 root=pathlib.Path(__file__).resolve().parent
-parser=argparse.ArgumentParser();parser.add_argument('--version',default='1.4.2');parser.add_argument('--arch',default='arm64',choices=['arm64','amd64']);parser.add_argument('--output-dir',type=pathlib.Path,default=root/'dist');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--version',default='1.4.3');parser.add_argument('--arch',default='arm64',choices=['arm64','amd64']);parser.add_argument('--output-dir',type=pathlib.Path,default=root/'dist');args=parser.parse_args()
 if not re.fullmatch(r'\d{1,4}\.\d{1,4}\.\d{1,4}',args.version):raise SystemExit('invalid release version')
 env={**os.environ,'CGO_ENABLED':'0','GOOS':'linux','GOARCH':args.arch};binary=root/'release/darkls-panel'
 subprocess.run([os.environ.get('GO_BIN','go'),'build','-buildvcs=false','-trimpath','-gcflags=all=-l','-ldflags=-s -w -buildid= -X main.version='+args.version,'-o',str(binary),'.'],cwd=root,env=env,check=True)

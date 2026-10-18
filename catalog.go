@@ -8,8 +8,9 @@ import (
 )
 
 // Curated service catalog, not a complete copy of the RKN URL registry.
-// All additions are opt-in. Do not include a service merely because it withdrew
-// from Russia itself. See CATALOG_SOURCES.md for evidence and scope.
+// All additions are opt-in. The catalogue includes RKN restrictions and provider
+// regional limits; neither inclusion nor VPN routing guarantees account access.
+// See CATALOG_SOURCES.md for evidence and scope.
 var additionalPresets = []Group{
 	{ID: "facebook", Name: "Facebook / Messenger", Domains: strings.Fields("facebook.com facebook.net fb.com fbcdn.net fbsbx.com messenger.com m.me")},
 	{ID: "linkedin", Name: "LinkedIn", Domains: strings.Fields("linkedin.com licdn.com lnkd.in")},
@@ -44,6 +45,51 @@ var additionalPresets = []Group{
 	{ID: "adult-youporn", Name: "YouPorn · 18+", Domains: strings.Fields("youporn.com youpornpremium.com youpornru.com ypncdn.com")},
 	{ID: "adult-spankbang", Name: "SpankBang · 18+", Domains: strings.Fields("spankbang.com spankbang.party sb-cd.com")},
 	{ID: "adult-eporner", Name: "Eporner · 18+", Domains: strings.Fields("eporner.com")},
+	{ID: "tiktok", Name: "TikTok", Domains: strings.Fields("tiktok.com tiktokv.com tiktokv.eu tiktokv.us tiktokw.eu tiktokw.us tiktokcdn.com tiktokcdn-eu.com tiktokcdn-us.com tiktokeu-cdn.com tiktokrow-cdn.com tiktok-row.net tiktokd.net tiktokd.org muscdn.com musical.ly tik-tokapi.com ttlivecdn.com ttoverseaus.net ttwstatic.com tiktokcdn.com.akamaized.net tiktokcdn.com.edgesuite.net tiktokcdn-us.com.edgesuite.net tiktokv.com.edgekey.net")},
+	{ID: "spotify", Name: "Spotify", Domains: strings.Fields("spotify.com scdn.co pscdn.co spotifycdn.com spotifycdn.net spotify.link spoti.fi audio-ak-spotify-com.akamaized.net audio4-ak-spotify-com.akamaized.net heads-ak-spotify-com.akamaized.net heads4-ak-spotify-com.akamaized.net spotify.map.fastly.net")},
+	{ID: "netflix", Name: "Netflix", Domains: strings.Fields("netflix.com netflix.net nflxext.com nflximg.com nflximg.net nflxsearch.net nflxso.net nflxvideo.net")},
+	{ID: "claude", Name: "Claude / Anthropic", Domains: strings.Fields("claude.ai claude.com anthropic.com claudeusercontent.com claude.dev claudemcpclient.com claudemcpcontent.com servd-anthropic-website.b-cdn.net")},
+	{ID: "notion", Name: "Notion", Domains: strings.Fields("notion.so notion.com notion.site notion-static.com notionusercontent.com notion.new")},
+	{ID: "miro", Name: "Miro", Domains: strings.Fields("miro.com mirostatic.com realtimeboard.com")},
+	{ID: "canva", Name: "Canva", Domains: strings.Fields("canva.com")},
+	{ID: "adobe", Name: "Adobe / Creative Cloud / Firefly", Domains: strings.Fields("adobe.com adobe.io adobelogin.com adobecc.com adobess.com adobeaemcloud.com adobeaemcloud.net")},
+	{ID: "autodesk", Name: "Autodesk", Domains: strings.Fields("autodesk.com autodesk.net autodesk360.com")},
+	{ID: "wrike", Name: "Wrike", Domains: strings.Fields("wrike.com")},
+	{ID: "adult-beeg", Name: "Beeg · 18+", Domains: strings.Fields("beeg.com")},
+	{ID: "adult-tube8", Name: "Tube8 · 18+", Domains: strings.Fields("tube8.com tube8.fr")},
+	{ID: "adult-tnaflix", Name: "TNAFlix · 18+", Domains: strings.Fields("tnaflix.com")},
+	{ID: "adult-youjizz", Name: "YouJizz · 18+", Domains: strings.Fields("youjizz.com yjcontentdelivery.com")},
+	{ID: "adult-hclips", Name: "HClips · 18+", Domains: strings.Fields("hclips.com")},
+	{ID: "adult-hqporner", Name: "HQPorner · 18+", Domains: strings.Fields("hqporner.com")},
+	{ID: "adult-motherless", Name: "Motherless · 18+", Domains: strings.Fields("motherless.com")},
+	{ID: "adult-porntrex", Name: "PornTrex · 18+", Domains: strings.Fields("porntrex.com")},
+	{ID: "adult-chaturbate", Name: "Chaturbate · 18+", Domains: strings.Fields("chaturbate.com")},
+	{ID: "adult-stripchat", Name: "Stripchat · 18+", Domains: strings.Fields("stripchat.com")},
+	{ID: "adult-bongacams", Name: "BongaCams · 18+", Domains: strings.Fields("bongacams.com bcicdn.com bcrncdn.com bcvcdn.com bgicdn.com")},
+	{ID: "adult-brazzers", Name: "Brazzers · 18+", Domains: strings.Fields("brazzers.com brazzers.xxx brazzersnetwork.com")},
+	{ID: "adult-realitykings", Name: "Reality Kings · 18+", Domains: strings.Fields("realitykings.com rk.com")},
+	{ID: "adult-naughtyamerica", Name: "Naughty America · 18+", Domains: strings.Fields("naughtyamerica.com")},
+	{ID: "adult-bangbros", Name: "BangBros · 18+", Domains: strings.Fields("bangbros.com bangbrosnetwork.com")},
+	{ID: "adult-mofos", Name: "Mofos · 18+", Domains: strings.Fields("mofos.com")},
+	{ID: "adult-sxyprn", Name: "SxyPrn · 18+", Domains: strings.Fields("sxyprn.com")},
+	{ID: "adult-fuq", Name: "Fuq · 18+", Domains: strings.Fields("fuq.com")},
+	{ID: "adult-txxx", Name: "TXXX · 18+", Domains: strings.Fields("txxx.com")},
+	{ID: "adult-drtuber", Name: "DrTuber · 18+", Domains: strings.Fields("drtuber.com")},
+}
+
+// Static notes are returned alongside state rather than inserted into user-owned
+// groups. Existing domain lists, names, categories and enabled flags stay intact.
+var catalogNotes = map[string]string{
+	"tiktok":   "Ограничения самого сервиса. Регион TikTok может зависеть от SIM-карты и аккаунта; одного VPN может не хватить.",
+	"spotify":  "Ограничения самого сервиса. Доступ также зависит от страны аккаунта и оплаты подписки.",
+	"netflix":  "Ограничения самого сервиса. Нужна действующая подписка; Netflix может ограничивать VPN-адреса.",
+	"claude":   "Региональные ограничения Anthropic. VPN не меняет правила регистрации, оплаты и доступа к аккаунту.",
+	"notion":   "Ограничения самого сервиса. VPN не восстанавливает удалённые или отключённые рабочие пространства.",
+	"miro":     "Ограничения самого сервиса. Доступ к аккаунту и организации определяется правилами Miro.",
+	"canva":    "Ограничения самого сервиса. VPN не меняет страну аккаунта и платёжные ограничения.",
+	"adobe":    "Частичные ограничения самого сервиса: продажи и отдельные функции. VPN не заменяет лицензию и не меняет оплату.",
+	"autodesk": "Ограничения самого сервиса и лицензирования. VPN не восстанавливает отозванную лицензию.",
+	"wrike":    "Ограничения самого сервиса. VPN не восстанавливает прекращённое обслуживание аккаунта.",
 }
 
 func addCatalogGroups(st State) (State, int) {

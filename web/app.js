@@ -9,6 +9,7 @@ let state, original, revision, csrf = '',
   viewBusy = false;
 const $ = id => document.getElementById(id),
   clone = obj => JSON.parse(JSON.stringify(obj));
+let catalogNotes = {};
 const categories = {
   video: 'Видео',
   ai: 'Искусственный интеллект',
@@ -18,6 +19,7 @@ const categories = {
   reading: 'Чтение и авторы',
   news: 'Новости и СМИ',
   tools: 'Сервисы и инструменты',
+  work: 'Работа и дизайн',
   adult: '18+',
   custom: 'Мои группы'
 };
@@ -184,6 +186,7 @@ function render() {
       head.append(toggle);
       card.append(head, el('div', 'domain-preview', g.domains.slice(0, 5).join(' · ') ||
         'Добавь домены этой группы'));
+      if (catalogNotes[g.id]) card.append(el('p', 'tiny muted', catalogNotes[g.id]));
       const bottom = el('div', 'card-bottom');
       bottom.append(el('span', 'route-tag', g.enabled ? 'ЧЕРЕЗ VPN' : 'ГРУППА ВЫКЛЮЧЕНА'));
       const edit = el('button', 'edit-button', 'Настроить ↗');
@@ -265,6 +268,7 @@ $('search').addEventListener('input', render);
 $('category-filter').onchange = render;
 async function loadState() {
   const data = await api('state');
+  catalogNotes = data.catalog_notes || {};
   state = data.state;
   if (!state.policy) state.policy = {
     mode: 'all',
