@@ -34,6 +34,7 @@ esac
    s=(project/'release'/name).read_text().replace('BASE=/jffs/xray','BASE='+str(root)).replace('/jffs/scripts/usb-mount-script',str(usb)).replace('"$PANEL/darkls-panel" --update-catalog','"$PANEL/darkls-panel" --root "$BASE" --update-catalog').replace('"$PANEL/darkls-panel" --repair-instagram','"$PANEL/darkls-panel" --root "$BASE" --repair-instagram').replace('"$PANEL/darkls-panel" --sync-devices','"$PANEL/darkls-panel" --root "$BASE" --sync-devices')
    if name=='install-update.sh':
     s=s.replace('\"$PANEL/darkls-panel\" --upgrade-policy','true # native migration covered by Go fault-injection tests')
+    s=s.replace('"$PANEL/darkls-panel" --enable-x-grok','touch "$PANEL/x-grok-enabled-v1" # native activation covered by Go rollback tests')
     a=s.index('ready() {');b=s.index('\nstart_and_check()',a)
     s=s[:a]+'''ready() {
 "'''+sys.executable+'''" -c 'import urllib.request,json;assert json.load(urllib.request.urlopen("http://127.0.0.1:18091/api/update-status",timeout=1))["version"]=="'''+new_version+'''"'

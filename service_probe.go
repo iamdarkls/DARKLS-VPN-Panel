@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var serviceDomains = map[string]string{"chatgpt": "chatgpt.com", "youtube": "www.youtube.com", "instagram": "www.instagram.com", "discord": "discord.com", "gemini": "gemini.google.com", "twitter": "x.com", "telegram": "telegram.org"}
+var serviceDomains = map[string]string{"chatgpt": "chatgpt.com", "youtube": "www.youtube.com", "instagram": "www.instagram.com", "discord": "discord.com", "gemini": "gemini.google.com", "twitter": "x.com", "grok": "grok.com", "telegram": "telegram.org"}
 
 type ServiceResult struct {
 	Domain     string `json:"domain"`

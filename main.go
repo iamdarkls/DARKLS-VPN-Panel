@@ -34,7 +34,7 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.4.3"
+var version = "1.4.4"
 
 type Auth struct {
 	User string `json:"user"`
@@ -487,6 +487,7 @@ func main() {
 	upgradePolicy := flag.Bool("upgrade-policy", false, "мигрировать правила групп")
 	recoverParts := flag.Bool("recover-components", false, "точечное восстановление VPN")
 	checkParts := flag.Bool("check-components", false, "проверить компоненты соединения")
+	enableXGrok := flag.Bool("enable-x-grok", false, "однократно включить X и Grok с зависимостями")
 	repairIG := flag.Bool("repair-instagram", false, "добавить недостающий домен проверки Instagram один раз")
 	updateCatalog := flag.Bool("update-catalog", false, "добавить отсутствующие группы выключенными")
 	checkVPN := flag.Bool("check-vpn", false, "проверить HTTPS через локальный SOCKS Xray")
@@ -606,6 +607,12 @@ func main() {
 		}
 		defer release()
 		if e = s.recoverComponents(*reason); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
+	if *enableXGrok {
+		if e := s.enableRequestedXGrok(); e != nil {
 			log.Fatal(e)
 		}
 		return

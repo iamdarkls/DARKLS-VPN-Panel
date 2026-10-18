@@ -52,3 +52,11 @@ Roblox исключён из каталога: Интерфакс сообщил
 Домены сверены с файлами `tiktok`, `spotify`, `netflix`, `anthropic`, `notion`, `canva`, `adobe`, `autodesk` в [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community/tree/master/data) на 18.10.2026. Выбраны домены конкретных продуктов и часть CDN; общие суффиксы `cloudfront.net`, `akamaized.net`, `amazonaws.com` целиком не добавляются. Для Miro использованы [официальные сетевые требования](https://help.miro.com/hc/en-us/articles/20857452690706-Miro-domains-reference), для Wrike — основной домен `wrike.com`. Поддомены включаются правилом базового домена.
 
 Все новые группы выключены. При совпадении ID или основного домена существующие пользовательские группы сохраняются. Включённые ранее сайты и настройки QUIC не изменяются.
+
+## X / Twitter и Grok — 18.10.2026
+
+Для X расширены домены входа, сокращённых ссылок, изображений, видео и статики, включая `twimg.com`, `twitteroauth.com`, `twtrdns.net`, `twvid.com`, `pscp.tv` и специализированный `twitter.map.fastly.net`. Основание: [v2fly/twitter](https://github.com/v2fly/domain-list-community/blob/master/data/twitter).
+
+Для Grok добавлены `grok.com`, `x.ai` (включает `accounts.x.ai`, `api.x.ai` и другие поддомены), `grok.x.com`, вход через X и его CDN, а также `challenges.cloudflare.com` для проверки Cloudflare. Источники: [v2fly/xai](https://github.com/v2fly/domain-list-community/blob/master/data/xai), [xAI: аккаунты](https://docs.x.ai/console/faq/accounts), [Cloudflare Challenges](https://developers.cloudflare.com/cloudflare-challenges/). Общие CDN-суффиксы `fastly.net` и `cloudflare.com` целиком не направляются в VPN.
+
+По явному запросу пользователя обновление 1.4.4 один раз включает X и Grok и добавляет недостающие зависимости. Для этого используется обычная транзакция применения с резервной копией, обновлением DNS/правил и откатом при ошибке. Имена, пользовательские домены, настройки QUIC и остальные группы сохраняются. Маркер `x-grok-enabled-v1` ставится после успешного применения и восстанавливается при откате установщика; последующее ручное выключение групп или удаление доменов уважается будущими обновлениями. Общий выключатель VPN и режим устройств не изменяются.

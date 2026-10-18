@@ -87,7 +87,8 @@ var dependencyHosts = map[string][]string{
 	"youtube":   {"www.youtube.com", "i.ytimg.com", "youtubei.googleapis.com", "googlevideo.com"},
 	"discord":   {"discord.com", "gateway.discord.gg", "cdn.discordapp.com"},
 	"gemini":    {"gemini.google.com", "accounts.google.com", "generativelanguage.googleapis.com"},
-	"twitter":   {"x.com", "pbs.twimg.com", "abs.twimg.com"},
+	"twitter":   {"x.com", "api.x.com", "twitter.com", "pbs.twimg.com", "abs.twimg.com", "video.twimg.com", "t.co"},
+	"grok":      {"grok.com", "accounts.x.ai", "api.x.ai", "x.com", "pbs.twimg.com", "challenges.cloudflare.com"},
 	"telegram":  {"telegram.org", "t.me", "web.telegram.org"},
 }
 

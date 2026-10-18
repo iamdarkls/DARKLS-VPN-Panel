@@ -21,8 +21,11 @@ mkdir -p "$ROLL"
 chmod 700 "$ROLL"
 for name in vpn.sh watch.sh domains.txt dnsmasq-vpn.conf telegram-networks.txt; do cp -p "$BASE/$name" "$ROLL/$name"; done
 cp -p "$PANEL/state.json" "$ROLL/state.json"
-rm -f "$ROLL/instagram-fbsbx-migrated" "$ROLL/instagram-fbsbx-migrated.absent"
-if [ -f "$PANEL/instagram-fbsbx-migrated" ]; then cp -p "$PANEL/instagram-fbsbx-migrated" "$ROLL/instagram-fbsbx-migrated"; else touch "$ROLL/instagram-fbsbx-migrated.absent"; fi
+# One-shot migration markers belong to the update transaction too.
+for name in instagram-fbsbx-migrated x-grok-enabled-v1; do
+  rm -f "$ROLL/$name" "$ROLL/$name.absent"
+  if [ -f "$PANEL/$name" ]; then cp -p "$PANEL/$name" "$ROLL/$name"; else touch "$ROLL/$name.absent"; fi
+done
 for name in reload-dns.sh devices-sync.sh; do
   rm -f "$ROLL/$name" "$ROLL/$name.absent"
   if [ -f "$PANEL/$name" ]; then cp -p "$PANEL/$name" "$ROLL/$name"; else touch "$ROLL/$name.absent"; fi
@@ -81,7 +84,9 @@ rollback() {
     if [ -f "$ROLL/$name.absent" ]; then rm -f "$PANEL/$name"; else cp -p "$ROLL/$name" "$PANEL/$name"; fi
   done
   rm -f /tmp/darkls-device-digest
-  if [ -f "$ROLL/instagram-fbsbx-migrated.absent" ]; then rm -f "$PANEL/instagram-fbsbx-migrated"; else cp -p "$ROLL/instagram-fbsbx-migrated" "$PANEL/instagram-fbsbx-migrated"; fi
+  for name in instagram-fbsbx-migrated x-grok-enabled-v1; do
+    if [ -f "$ROLL/$name.absent" ]; then rm -f "$PANEL/$name"; else cp -p "$ROLL/$name" "$PANEL/$name"; fi
+  done
   if [ ! -f "$BASE/autostart.disabled" ]; then sh "$BASE/vpn.sh" start || true; fi
   rm -f "$PANEL/policy-v130.ready"
   if start_and_check; then touch "$PKG/rollback.ok"; echo 'Previous panel restored'; else echo 'Rollback startup failed; see /tmp/darkls-panel.log'; fi
@@ -97,7 +102,7 @@ finish() {
     tail -n 20 /tmp/darkls-panel.log
     exit "$result"
   fi
-  echo "Panel $TARGET installed. Password and device/site selection preserved."
+  echo "Panel $TARGET installed. Password and device/site selection preserved; requested X/Grok activation applied once."
   echo 'Refresh http://192.168.50.1:8088 with Ctrl+F5.'
   if [ ! -f "$BASE/autostart.disabled" ]; then
     (trap '' HUP; "$PANEL/darkls-panel" --check-vpn > /tmp/darkls-vpn-probe.log 2>&1) < /dev/null &
@@ -132,6 +137,7 @@ mv "$BASE/vpn.sh.new" "$BASE/vpn.sh"
 chmod 700 "$BASE/watch.sh" "$BASE/vpn.sh"
 "$PANEL/darkls-panel" --update-catalog
 "$PANEL/darkls-panel" --repair-instagram
+"$PANEL/darkls-panel" --enable-x-grok
 "$PANEL/darkls-panel" --sync-devices --force-devices
 "$PANEL/darkls-panel" --upgrade-policy
 if [ "$LOG_RESTART" -eq 1 ] && [ ! -f "$BASE/autostart.disabled" ]; then

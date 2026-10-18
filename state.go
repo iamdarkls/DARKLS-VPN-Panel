@@ -126,7 +126,7 @@ var presets = []Group{
 	{ID: "instagram", Name: "Instagram", Enabled: true, Domains: strings.Fields("instagram.com cdninstagram.com ig.me fbcdn.net fbsbx.com")},
 	{ID: "discord", Name: "Discord", Enabled: true, Domains: strings.Fields("discord.com discord.gg discordapp.com discordapp.net discord.media discordcdn.com dis.gd")},
 	{ID: "gemini", Name: "Gemini", Enabled: true, Domains: strings.Fields("gemini.google.com gemini.google aistudio.google.com generativelanguage.googleapis.com accounts.google.com oauth2.googleapis.com gstatic.com googleusercontent.com")},
-	{ID: "twitter", Name: "X / Twitter", Enabled: true, Domains: strings.Fields("x.com twitter.com t.co twimg.com twittercommunity.com")},
+	{ID: "twitter", Name: "X / Twitter", Enabled: true, Domains: strings.Fields(xDomains)},
 	{ID: "telegram", Name: "Telegram", Enabled: true, Domains: strings.Fields("telegram.org telegram.me telegram.dog t.me telesco.pe telegra.ph telegram-cdn.org cdn-telegram.org fragment.com")},
 }
 

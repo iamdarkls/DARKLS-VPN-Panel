@@ -10,7 +10,7 @@ func inferCategory(id string) string {
 	switch id {
 	case "youtube", "tiktok", "netflix":
 		return "video"
-	case "chatgpt", "gemini", "claude":
+	case "chatgpt", "gemini", "claude", "grok":
 		return "ai"
 	case "instagram", "twitter", "facebook", "linkedin", "snapchat":
 		return "social"

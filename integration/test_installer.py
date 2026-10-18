@@ -25,6 +25,7 @@ n=$((n+1));echo "$n" > "'''+str(home/'attempts')+'''"
   for name in ['install-update.sh','reload-dns.sh','devices-sync.sh','watch.sh']:
    s=(project/'release'/name).read_text().replace('BASE=/jffs/xray','BASE='+str(root)).replace('/jffs/scripts/usb-mount-script',str(startup)).replace('"$PANEL/darkls-panel" --update-catalog','"$PANEL/darkls-panel" --root "$BASE" --update-catalog').replace('"$PANEL/darkls-panel" --repair-instagram','"$PANEL/darkls-panel" --root "$BASE" --repair-instagram').replace('"$PANEL/darkls-panel" --sync-devices','"$PANEL/darkls-panel" --root "$BASE" --sync-devices').replace('"/proc/$current_pid/cmdline"','"$PANEL/test-cmdline"').replace('/tmp/darkls-',str(temp)+'/darkls-').replace('/tmp/xray-arm64.zip',str(temp)+'/xray-arm64.zip').replace('/tmp/asusware-usbmount.zip',str(temp)+'/asusware-usbmount.zip')
    s=s.replace('\"$PANEL/darkls-panel\" --upgrade-policy','true # native migration is covered by Go fault-injection tests')
+   s=s.replace('"$PANEL/darkls-panel" --enable-x-grok','touch "$PANEL/x-grok-enabled-v1" # native activation covered by Go rollback tests')
    s='\n'.join('  true # probe omitted in fixture' if "(trap '' HUP;" in line else line for line in s.splitlines())+'\n'
    (pkg/name).write_text(s)
   manifest={'format':1,'version':new_version,'arch':'amd64','files':{}}
@@ -38,10 +39,12 @@ n=$((n+1));echo "$n" > "'''+str(home/'attempts')+'''"
    assert subprocess.check_output([str(panel/'darkls-panel'),'--version'],text=True).strip()==new_version
    state=json.loads((panel/'state.json').read_text());assert state['groups'][0]['name']=='Мой YouTube' and not state['groups'][0]['enabled']
    assert 'DARKLS_DEVICE_POLICY_HOOK' in (root/'vpn.sh').read_text()
+   assert (panel/'x-grok-enabled-v1').exists()
    assert not pkg.exists();print('Bootstrap success: PASS, manifest, hooks, user state, cleanup')
   else:
    assert p.returncode!=0,(p.stdout,p.stderr)
    assert subprocess.check_output([str(panel/'darkls-panel'),'--version'],text=True).strip()==old_version
+   assert not (panel/'x-grok-enabled-v1').exists()
    assert (panel/'state.json').read_text()==old_state
    assert (root/'vpn.sh').read_text()==originals['vpn.sh']
    assert (pkg/'rollback.ok').exists();print('Bootstrap failed new startup: PASS, old executable/state/hooks restored and old service ready')

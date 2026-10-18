@@ -192,6 +192,7 @@ const knownServices = [
   ['discord', 'Discord'],
   ['gemini', 'Gemini'],
   ['twitter', 'X / Twitter'],
+  ['grok', 'Grok / xAI'],
   ['telegram', 'Telegram']
 ];
 const dependencySelect = select(dependencyBox, knownServices, 'Сервис'),

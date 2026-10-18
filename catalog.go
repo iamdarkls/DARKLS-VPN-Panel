@@ -11,7 +11,12 @@ import (
 // All additions are opt-in. The catalogue includes RKN restrictions and provider
 // regional limits; neither inclusion nor VPN routing guarantees account access.
 // See CATALOG_SOURCES.md for evidence and scope.
+const xDomains = "x.com twitter.com t.co twimg.com twittercommunity.com twitteroauth.com twitter.map.fastly.net twtrdns.net twttr.com twttr.net twvid.com tweetdeck.com cms-twdigitalassets.com pscp.tv periscope.tv"
+const grokDomains = "grok.com x.ai grok.x.com x.com twitter.com t.co twimg.com challenges.cloudflare.com"
+const xGrokMarker = "x-grok-enabled-v1"
+
 var additionalPresets = []Group{
+	{ID: "grok", Name: "Grok / xAI", Domains: strings.Fields(grokDomains)},
 	{ID: "facebook", Name: "Facebook / Messenger", Domains: strings.Fields("facebook.com facebook.net fb.com fbcdn.net fbsbx.com messenger.com m.me")},
 	{ID: "linkedin", Name: "LinkedIn", Domains: strings.Fields("linkedin.com licdn.com lnkd.in")},
 	{ID: "signal", Name: "Signal", Domains: strings.Fields("signal.org signal.art signal.group signal.link signal.me signal.tube signalusers.org")},
@@ -184,4 +189,70 @@ func (s *Server) repairInstagram() error {
 		}
 	}
 	return atomicWrite(marker, []byte("1\n"))
+}
+
+// The user explicitly requested these two groups enabled. This one-shot change
+// merges dependencies into existing custom groups, then uses the normal apply
+// transaction so DNS/rules failures roll back before the marker is committed.
+func requestedXGrokState(st State) State {
+	for _, spec := range []struct{ id, name, primary, alternative, domains string }{
+		{"twitter", "X / Twitter", "x.com", "twitter.com", xDomains},
+		{"grok", "Grok / xAI", "grok.com", "x.ai", grokDomains},
+	} {
+		index := -1
+		for i, g := range st.Groups {
+			if g.ID == spec.id {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			for i, g := range st.Groups {
+				for _, d := range g.Domains {
+					if d == spec.primary || d == spec.alternative {
+						index = i
+						break
+					}
+				}
+				if index >= 0 {
+					break
+				}
+			}
+		}
+		if index < 0 {
+			st.Groups = append(st.Groups, Group{ID: spec.id, Name: spec.name})
+			index = len(st.Groups) - 1
+		}
+		g := &st.Groups[index]
+		g.Enabled = true
+		g.EnabledUntil = 0
+		g.TimedPrevious = false
+		g.Domains = append(append([]string{}, g.Domains...), strings.Fields(spec.domains)...)
+	}
+	return st
+}
+
+func (s *Server) enableRequestedXGrok() error {
+	marker := filepath.Join(s.dir, xGrokMarker)
+	if _, err := os.Stat(marker); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if s.pendingRecovery() {
+		return fmt.Errorf("завершите восстановление перед включением X и Grok")
+	}
+	revision := s.revision()
+	st, err := s.state()
+	if err != nil {
+		return err
+	}
+	if _, err = s.apply(requestedXGrokState(st), revision); err != nil {
+		return err
+	}
+	if err = atomicWrite(marker, []byte("X and Grok enabled once at user request\n")); err != nil {
+		return err
+	}
+	fmt.Println("X / Twitter and Grok enabled with dependencies; later selections will be preserved")
+	return nil
 }
