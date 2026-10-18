@@ -34,7 +34,14 @@ type Connectivity struct {
 }
 
 func (s *Server) mainXrayPIDs() []string {
-	b, _ := s.run("pidof", "xray")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return s.mainXrayPIDsContext(ctx)
+}
+
+// Candidate Xray processes used by diagnostics must not count as the live VPN.
+func (s *Server) mainXrayPIDsContext(ctx context.Context) []string {
+	b, _ := s.runner.Run(ctx, "pidof", "xray")
 	out := []string{}
 	for _, p := range strings.Fields(string(b)) {
 		if _, e := strconv.Atoi(p); e != nil {

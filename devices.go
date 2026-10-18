@@ -158,30 +158,11 @@ func (s *Server) syncDevices(force bool) error {
 		return e
 	}
 	p := st.Policy
-	// Default policy needs no kernel set or periodic process work.
+	ips, digest, changed := s.devicePlan(p)
+	if !force && !changed {
+		return nil
+	}
 	digestPath := s.runtimePath("device-digest")
-	previous, _ := os.ReadFile(digestPath)
-	if p.Mode == "all" && len(previous) == 0 && !force {
-		return nil
-	}
-	selected := map[string]bool{}
-	for _, d := range p.Devices {
-		selected[d.MAC] = true
-	}
-	ips := []string{}
-	if p.Mode != "all" {
-		for _, d := range s.lanDevices() {
-			if selected[d.MAC] && validLANIP(d.IP) {
-				ips = append(ips, d.IP)
-			}
-		}
-	}
-	sort.Strings(ips)
-	sum := sha256.Sum256([]byte(p.Mode + "\n" + strings.Join(ips, "\n")))
-	digest := hex.EncodeToString(sum[:])
-	if string(previous) == digest && !force {
-		return nil
-	}
 	if p.Mode != "all" {
 		for _, args := range [][]string{{"create", "darkls_devices", "hash:ip", "family", "inet", "-exist"}, {"create", "darkls_dev_next", "hash:ip", "family", "inet", "-exist"}, {"flush", "darkls_dev_next"}} {
 			if out, e := s.run("ipset", args...); e != nil {
@@ -225,27 +206,27 @@ func (s *Server) syncDevices(force bool) error {
 	}
 	return atomicWrite(digestPath, []byte(digest))
 }
-func (s *Server) deviceLoop() {
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
-		if updateBusy() {
-			continue
-		}
-		if !s.mutation.TryLock() {
-			continue
-		}
-		release, e := s.pause()
-		if e == nil {
-			if !s.disabled() {
-				if e = s.syncDevices(false); e != nil {
-					appendEvent("devices_error", e.Error())
-				}
-			}
-			release()
-		}
-		s.mutation.Unlock()
+
+// devicePlan is read-only. The fast loop can skip flock and /proc scans when
+// DHCP/ARP still produces the same source IP set. Recompute after taking pause.
+func (s *Server) devicePlan(p DevicePolicy) (ips []string, digest string, changed bool) {
+	previous, _ := os.ReadFile(s.runtimePath("device-digest"))
+
+	selected := map[string]bool{}
+	for _, d := range p.Devices {
+		selected[d.MAC] = true
 	}
+	if p.Mode != "all" {
+		for _, d := range s.lanDevices() {
+			if selected[d.MAC] && validLANIP(d.IP) {
+				ips = append(ips, d.IP)
+			}
+		}
+	}
+	sort.Strings(ips)
+	sum := sha256.Sum256([]byte(p.Mode + "\n" + strings.Join(ips, "\n")))
+	digest = hex.EncodeToString(sum[:])
+	return ips, digest, string(previous) != digest && !(p.Mode == "all" && len(previous) == 0)
 }
 func (s *Server) devicePayload() map[string]any {
 	devices := s.lanDevices()

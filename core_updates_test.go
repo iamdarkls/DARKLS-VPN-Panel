@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -275,4 +276,45 @@ func TestCoreDiscoverySelectsNewestNumericReleaseIncludingPrereleases(t *testing
 	if newerRelease("26.3.27", "26.10.10") {
 		t.Fatal("older stable version offered as upgrade")
 	}
+}
+
+func TestStreamingCoreDiscoveryRejectsPartialOrTrailingMetadata(t *testing.T) {
+	valid := string(jsonBytes([]ghRelease{coreReleaseFixture()}))
+	for _, input := range []string{valid[:len(valid)/2], valid + "{}", valid + "garbage", "null", "{}", "[]", "[" + string(jsonBytes(coreReleaseFixture())) + ",broken]"} {
+		if _, err := selectCoreRelease(strings.NewReader(input)); err == nil {
+			t.Fatal("accepted invalid metadata", input)
+		}
+	}
+}
+
+// Same synthetic 30-release document for both paths; the buffered path models
+// v1.4.1's full-response allocation and full release-list decoding.
+func BenchmarkCoreMetadata(b *testing.B) {
+	releases := make([]ghRelease, 30)
+	for i := range releases {
+		releases[i] = coreReleaseFixture()
+		releases[i].Body = strings.Repeat("notes ", 10000)
+	}
+	data := jsonBytes(releases)
+	b.Run("buffered", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			raw, err := io.ReadAll(bytes.NewReader(data))
+			if err != nil {
+				b.Fatal(err)
+			}
+			var all []ghRelease
+			if err = json.Unmarshal(raw, &all); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("streamed", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if _, err := selectCoreRelease(bytes.NewReader(data)); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }

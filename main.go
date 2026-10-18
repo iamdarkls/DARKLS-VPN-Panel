@@ -19,57 +19,39 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-	"unicode/utf8"
 )
 
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.4.1"
+var version = "1.4.2"
 
-type Group struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Enabled       bool     `json:"enabled"`
-	Domains       []string `json:"domains"`
-	Category      string   `json:"category,omitempty"`
-	BlockQUIC     *bool    `json:"block_quic,omitempty"`
-	EnabledUntil  int64    `json:"enabled_until,omitempty"`
-	TimedPrevious bool     `json:"timed_previous,omitempty"`
-	QUICUntil     int64    `json:"quic_until,omitempty"`
-	QUICPrevious  bool     `json:"quic_previous,omitempty"`
-}
-type State struct {
-	Version int          `json:"version"`
-	Groups  []Group      `json:"groups"`
-	Policy  DevicePolicy `json:"policy"`
-}
 type Auth struct {
 	User string `json:"user"`
 	Salt string `json:"salt"`
 	Hash string `json:"hash"`
 }
+
 type Session struct {
 	CSRF     string
 	Expires  time.Time
 	AuthSalt string
 }
+
 type Runner interface {
 	Run(context.Context, string, ...string) ([]byte, error)
 }
+
 type realRunner struct{}
 
 func (realRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -107,6 +89,7 @@ func token() string {
 	}
 	return hex.EncodeToString(b)
 }
+
 func passwordHash(password, salt string) string {
 	key, e := pbkdf2.Key(sha256.New, password, []byte(salt), 150000, 32)
 	if e != nil {
@@ -114,510 +97,11 @@ func passwordHash(password, salt string) string {
 	}
 	return hex.EncodeToString(key)
 }
-func atomicWrite(path string, data []byte) error {
-	f, e := os.CreateTemp(filepath.Dir(path), ".panel-write-*")
-	if e != nil {
-		return e
-	}
-	name := f.Name()
-	defer os.Remove(name)
-	if e = f.Chmod(0600); e == nil {
-		_, e = f.Write(data)
-	}
-	if e == nil {
-		e = f.Sync()
-	}
-	ce := f.Close()
-	if e == nil {
-		e = ce
-	}
-	if e != nil {
-		return e
-	}
-	if e = os.Rename(name, path); e != nil {
-		return e
-	}
-	if d, err := os.Open(filepath.Dir(path)); err == nil {
-		_ = d.Sync()
-		_ = d.Close()
-	}
-	return nil
-}
-func jsonBytes(v any) []byte { b, _ := json.MarshalIndent(v, "", "  "); return append(b, '\n') }
-func readJSON(path string, v any) error {
-	b, e := os.ReadFile(path)
-	if e != nil {
-		return e
-	}
-	return json.Unmarshal(b, v)
-}
+
 func (s *Server) run(name string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 	return s.runner.Run(ctx, name, args...)
-}
-
-var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
-var labelPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-
-func normalizeDomain(raw string) (string, error) {
-	d := strings.TrimSpace(raw)
-	if strings.HasPrefix(d, "http://") || strings.HasPrefix(d, "https://") {
-		u, e := url.Parse(d)
-		if e != nil || u.User != nil || u.Hostname() == "" {
-			return "", errors.New("неверный адрес сайта")
-		}
-		d = u.Hostname()
-	}
-	d = strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(d, "*."), "."))
-	if len(d) > 253 || len(d) < 3 || !strings.Contains(d, ".") {
-		return "", fmt.Errorf("неверный домен: %q", raw)
-	}
-	if _, e := netip.ParseAddr(d); e == nil {
-		return "", errors.New("введите домен сайта, а не IP-адрес")
-	}
-	for _, p := range strings.Split(d, ".") {
-		if !labelPattern.MatchString(p) {
-			return "", fmt.Errorf("неверный домен %q; для кириллицы используйте punycode", raw)
-		}
-	}
-	return d, nil
-}
-func validate(st State) (State, error) {
-	if len(st.Groups) > 100 {
-		return st, errors.New("не более 100 групп")
-	}
-	st.Version = 1
-	if err := validatePolicy(&st.Policy); err != nil {
-		return st, err
-	}
-	ids := map[string]bool{}
-	total := 0
-	for i := range st.Groups {
-		g := &st.Groups[i]
-		g.Name = strings.TrimSpace(g.Name)
-		if g.BlockQUIC == nil {
-			g.BlockQUIC = boolRef(g.ID == "youtube")
-		}
-		if g.EnabledUntil < 0 || g.QUICUntil < 0 || (time.Now().Year() >= 2025 && (g.EnabledUntil > time.Now().Add(8*24*time.Hour).Unix() || g.QUICUntil > time.Now().Add(8*24*time.Hour).Unix())) {
-			return st, errors.New("неверный срок временной настройки")
-		}
-		if !idPattern.MatchString(g.ID) || ids[g.ID] {
-			return st, errors.New("неверный или повторяющийся идентификатор группы")
-		}
-		ids[g.ID] = true
-		if g.Category == "" {
-			g.Category = inferCategory(g.ID)
-		}
-		if !validCategory(g.Category) {
-			return st, errors.New("неверный раздел группы")
-		}
-		if !utf8.ValidString(g.Name) || utf8.RuneCountInString(g.Name) < 1 || utf8.RuneCountInString(g.Name) > 60 || strings.ContainsAny(g.Name, "\x00\r\n") {
-			return st, errors.New("название группы: от 1 до 60 символов")
-		}
-		seen := map[string]bool{}
-		out := []string{}
-		for _, raw := range g.Domains {
-			if strings.TrimSpace(raw) == "" {
-				continue
-			}
-			d, e := normalizeDomain(raw)
-			if e != nil {
-				return st, e
-			}
-			if !seen[d] {
-				out = append(out, d)
-				seen[d] = true
-				total++
-			}
-		}
-		sort.Strings(out)
-		g.Domains = out
-	}
-	if total > 3000 {
-		return st, errors.New("не более 3000 доменов")
-	}
-	return st, nil
-}
-
-var presets = []Group{
-	{ID: "youtube", Name: "YouTube", Enabled: true, Domains: strings.Fields("youtube.com youtu.be youtube-nocookie.com googlevideo.com ytimg.com youtubei.googleapis.com youtube.googleapis.com yt3.ggpht.com accounts.google.com oauth2.googleapis.com")},
-	{ID: "chatgpt", Name: "ChatGPT", Enabled: true, Domains: strings.Fields("chatgpt.com openai.com oaistatic.com oaiusercontent.com")},
-	{ID: "instagram", Name: "Instagram", Enabled: true, Domains: strings.Fields("instagram.com cdninstagram.com ig.me fbcdn.net fbsbx.com")},
-	{ID: "discord", Name: "Discord", Enabled: true, Domains: strings.Fields("discord.com discord.gg discordapp.com discordapp.net discord.media discordcdn.com dis.gd")},
-	{ID: "gemini", Name: "Gemini", Enabled: true, Domains: strings.Fields("gemini.google.com gemini.google aistudio.google.com generativelanguage.googleapis.com accounts.google.com oauth2.googleapis.com gstatic.com googleusercontent.com")},
-	{ID: "twitter", Name: "X / Twitter", Enabled: true, Domains: strings.Fields("x.com twitter.com t.co twimg.com twittercommunity.com")},
-	{ID: "telegram", Name: "Telegram", Enabled: true, Domains: strings.Fields("telegram.org telegram.me telegram.dog t.me telesco.pe telegra.ph telegram-cdn.org cdn-telegram.org fragment.com")},
-}
-
-func importState(domains []byte) (State, error) {
-	existing := map[string]bool{}
-	for _, line := range strings.Split(string(domains), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		d, e := normalizeDomain(line)
-		if e != nil {
-			return State{}, e
-		}
-		existing[d] = true
-	}
-	used := map[string]bool{}
-	st := State{Version: 1, Groups: []Group{}}
-	for _, p := range presets {
-		g := Group{ID: p.ID, Name: p.Name, Enabled: true, Domains: []string{}}
-		for _, d := range p.Domains {
-			if existing[d] {
-				g.Domains = append(g.Domains, d)
-				used[d] = true
-			}
-		}
-		st.Groups = append(st.Groups, g)
-	}
-	other := Group{ID: "custom", Name: "Мои сайты", Enabled: true, Domains: []string{}}
-	for d := range existing {
-		if !used[d] {
-			other.Domains = append(other.Domains, d)
-		}
-	}
-	st.Groups = append(st.Groups, other)
-	st, _ = addCatalogGroups(st)
-	return validate(st)
-}
-func activeDomains(st State) []string {
-	m := map[string]bool{}
-	for _, g := range st.Groups {
-		if g.active(time.Now().Unix()) {
-			for _, d := range g.Domains {
-				m[d] = true
-			}
-		}
-	}
-	out := []string{}
-	for d := range m {
-		out = append(out, d)
-	}
-	sort.Strings(out)
-	return out
-}
-func youtubeDomain(d string) bool {
-	for _, suffix := range []string{"youtube.com", "googlevideo.com", "youtube-nocookie.com", "ytimg.com"} {
-		if d == suffix || strings.HasSuffix(d, "."+suffix) {
-			return true
-		}
-	}
-	return false
-}
-func dnsConfig(domains []string) []byte {
-	var b strings.Builder
-	b.WriteString("port=10535\nlisten-address=127.0.0.1,192.168.50.1\nbind-interfaces\npid-file=/tmp/dnsmasq-vpn.pid\nno-resolv\nno-hosts\ncache-size=1000\nfilter-AAAA\nserver=127.0.0.1#53\n")
-	for _, d := range domains {
-		fmt.Fprintf(&b, "server=/%s/127.0.0.1#1053\nipset=/%s/darkls_vpn", d, d)
-		if youtubeDomain(d) {
-			b.WriteString(",darkls_yt")
-		}
-		b.WriteByte('\n')
-	}
-	return []byte(b.String())
-}
-func (s *Server) init() error {
-	if e := os.MkdirAll(filepath.Join(s.dir, "backups"), 0700); e != nil {
-		return e
-	}
-	if _, e := os.Stat(filepath.Join(s.dir, "state.json")); os.IsNotExist(e) {
-		b, e := os.ReadFile(filepath.Join(s.root, "domains.txt"))
-		if e != nil {
-			return e
-		}
-		st, e := importState(b)
-		if e != nil {
-			return e
-		}
-		if e = atomicWrite(filepath.Join(s.dir, "state.json"), jsonBytes(st)); e != nil {
-			return e
-		}
-	}
-	tg := filepath.Join(s.dir, "telegram-original.txt")
-	if _, e := os.Stat(tg); os.IsNotExist(e) {
-		b, e := os.ReadFile(filepath.Join(s.root, "telegram-networks.txt"))
-		if e != nil {
-			return e
-		}
-		if e = atomicWrite(tg, b); e != nil {
-			return e
-		}
-	}
-	return nil
-}
-func (s *Server) state() (State, error) {
-	var st State
-	e := readJSON(filepath.Join(s.dir, "state.json"), &st)
-	if e != nil {
-		return st, e
-	}
-	return validate(st)
-}
-
-var managedFiles = []string{"domains.txt", "dnsmasq-vpn.conf", "telegram-networks.txt", "panel/state.json"}
-
-func (s *Server) revision() string {
-	h := sha256.New()
-	for _, f := range managedFiles {
-		b, _ := os.ReadFile(filepath.Join(s.root, f))
-		h.Write([]byte(f))
-		h.Write(b)
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-func (s *Server) backup() (string, error) {
-	now := time.Now()
-	id := fmt.Sprintf("%s-%09d-%s", now.Format("20060102-150405"), now.Nanosecond(), token()[:8])
-	dir := filepath.Join(s.dir, "backups", id)
-	if e := os.Mkdir(dir, 0700); e != nil {
-		return "", e
-	}
-	for _, f := range managedFiles {
-		b, e := os.ReadFile(filepath.Join(s.root, f))
-		if e != nil {
-			return "", e
-		}
-		if e = atomicWrite(filepath.Join(dir, filepath.Base(f)), b); e != nil {
-			return "", e
-		}
-	}
-	return id, nil
-}
-func (s *Server) restoreFiles(id string) error {
-	if !idPattern.MatchString(id) {
-		return errors.New("неверная резервная копия")
-	}
-	for _, f := range managedFiles {
-		b, e := os.ReadFile(filepath.Join(s.dir, "backups", id, filepath.Base(f)))
-		if e != nil {
-			return e
-		}
-		if e = atomicWrite(filepath.Join(s.root, f), b); e != nil {
-			return e
-		}
-	}
-	return nil
-}
-func (s *Server) prune() {
-	entries, _ := os.ReadDir(filepath.Join(s.dir, "backups"))
-	names := []string{}
-	for _, e := range entries {
-		if e.IsDir() && idPattern.MatchString(e.Name()) {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	for len(names) > 12 {
-		_ = os.RemoveAll(filepath.Join(s.dir, "backups", names[0]))
-		names = names[1:]
-	}
-}
-func (s *Server) disabled() bool {
-	_, e := os.Stat(filepath.Join(s.root, "autostart.disabled"))
-	return e == nil
-}
-
-func (s *Server) pause() (func(), error) {
-	lock, e := os.OpenFile(filepath.Join(s.dir, "apply.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if e != nil {
-		return nil, e
-	}
-	if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
-		_ = lock.Close()
-		return nil, errors.New("другая операция уже выполняется")
-	}
-	// Kernel-managed locks are released even if the process crashes or the router reboots.
-	release := func() { _ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); _ = lock.Close() }
-	deadline := time.Now().Add(45 * time.Second)
-	for managerRunning(s.root) {
-		if time.Now().After(deadline) {
-			release()
-			return nil, errors.New("скрипт VPN занят; повторите позже")
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-	return release, nil
-}
-
-func managerRunning(root string) bool {
-	entries, _ := os.ReadDir("/proc")
-	for _, entry := range entries {
-		if _, e := strconv.Atoi(entry.Name()); e != nil {
-			continue
-		}
-		b, e := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
-		if e != nil {
-			continue
-		}
-		args := strings.Split(string(b), "\x00")
-		if len(args) > 1 && args[1] == filepath.Join(root, "vpn.sh") {
-			return true
-		}
-	}
-	return false
-}
-func (s *Server) restart() error {
-	if out, e := s.run("sh", filepath.Join(s.root, "vpn.sh"), "stop"); e != nil {
-		return fmt.Errorf("остановка маршрутизации: %s", limited(out))
-	}
-	if s.disabled() {
-		return nil
-	}
-	// Cached client DNS answers remain in use across process restarts. Preserve
-	// their VPN and YouTube address sets instead of silently bypassing the VPN.
-	if e := s.syncTelegramSet(); e != nil {
-		return e
-	}
-	out, e := s.run("sh", filepath.Join(s.root, "vpn.sh"), "start")
-	if e != nil {
-		return fmt.Errorf("запуск VPN: %s", limited(out))
-	}
-	return nil
-}
-func limited(b []byte) string {
-	if len(b) > 3000 {
-		b = b[len(b)-3000:]
-	}
-	return string(b)
-}
-func (s *Server) apply(st State, expected string) (backup string, err error) {
-	st, err = validate(st)
-	if err != nil {
-		return "", err
-	}
-	if expected != s.revision() {
-		return "", errors.New("CONFLICT: настройки изменились; обновите страницу")
-	}
-	config := dnsConfigForState(st)
-	tmp := filepath.Join(s.dir, "dnsmasq-candidate.conf")
-	if err = atomicWrite(tmp, config); err != nil {
-		return "", err
-	}
-	defer os.Remove(tmp)
-	if out, e := s.run("dnsmasq", "--test", "--conf-file="+tmp); e != nil {
-		return "", fmt.Errorf("проверка DNS: %s", limited(out))
-	}
-	release, e := s.pause()
-	if e != nil {
-		return "", e
-	}
-	defer release()
-	// Recheck under the interprocess lock: another process may have committed
-	// between validation and acquiring the lock.
-	if expected != s.revision() {
-		return "", errors.New("CONFLICT: настройки изменились; обновите страницу")
-	}
-	oldConfig, err := os.ReadFile(filepath.Join(s.root, "dnsmasq-vpn.conf"))
-	if err != nil {
-		return "", err
-	}
-	oldState, err := s.state()
-	if err != nil {
-		return "", err
-	}
-	oldTG, err := os.ReadFile(filepath.Join(s.root, "telegram-networks.txt"))
-	if err != nil {
-		return "", err
-	}
-	routingChanged := policyChanged(oldState, st)
-	if !s.disabled() && (routingChanged || !bytes.Equal(oldConfig, config)) {
-		if err = s.ensureGroupSets(st); err != nil {
-			return "", err
-		}
-	}
-	backup, err = s.backup()
-	if err != nil {
-		return "", err
-	}
-	journal := filepath.Join(s.dir, "apply-journal.json")
-	if err = atomicWrite(journal, jsonBytes(map[string]string{"backup": backup})); err != nil {
-		return "", err
-	}
-	defer func() {
-		if err != nil {
-			re := s.restoreFiles(backup)
-			rr := s.reloadRouting(true, true)
-			if re == nil {
-				if pe := s.syncGroupRouting(); pe != nil && rr == nil {
-					rr = pe
-				}
-			}
-			if de := s.syncDevices(true); de != nil && rr == nil {
-				rr = de
-			}
-			if re != nil || rr != nil {
-				err = fmt.Errorf("%v; восстановление: файлы=%v, VPN=%v", err, re, rr)
-				return
-			}
-			err = fmt.Errorf("%v; прежние настройки восстановлены", err)
-		}
-		_ = os.Remove(journal)
-	}()
-	domains := strings.Join(activeDomains(st), "\n")
-	if domains != "" {
-		domains += "\n"
-	}
-	tg := []byte{}
-	for _, g := range st.Groups {
-		if g.ID == "telegram" && g.Enabled {
-			tg, err = os.ReadFile(filepath.Join(s.dir, "telegram-original.txt"))
-			if err != nil {
-				return backup, err
-			}
-		}
-	}
-	for _, f := range []struct {
-		name string
-		data []byte
-	}{{"domains.txt", []byte(domains)}, {"dnsmasq-vpn.conf", config}, {"telegram-networks.txt", tg}, {"panel/state.json", jsonBytes(st)}} {
-		if err = atomicWrite(filepath.Join(s.root, f.name), f.data); err != nil {
-			return backup, err
-		}
-	}
-	if err = s.reloadRouting(!bytes.Equal(oldConfig, config), !bytes.Equal(oldTG, tg)); err != nil {
-		return backup, err
-	}
-	if !bytes.Equal(jsonBytes(oldState.Policy), jsonBytes(st.Policy)) {
-		if err = s.syncDevices(true); err != nil {
-			return backup, err
-		}
-	}
-	if routingChanged || !bytes.Equal(oldConfig, config) {
-		if err = s.syncGroupRouting(); err != nil {
-			return backup, err
-		}
-	}
-	appendEvent("settings", "Настройки сайтов и устройств применены")
-	s.prune()
-	return backup, nil
-}
-func (s *Server) recoverJournal() error {
-	path := filepath.Join(s.dir, "apply-journal.json")
-	var j map[string]string
-	e := readJSON(path, &j)
-	if os.IsNotExist(e) {
-		return nil
-	}
-	if e != nil {
-		return e
-	}
-	release, e := s.pause()
-	if e != nil {
-		return e
-	}
-	defer release()
-	if e = s.restoreFiles(j["backup"]); e != nil {
-		return e
-	}
-	if e = s.restart(); e != nil {
-		return e
-	}
-	return os.Remove(path)
 }
 
 func respond(w http.ResponseWriter, code int, v any) {
@@ -625,9 +109,11 @@ func respond(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
 func fail(w http.ResponseWriter, code int, e error) {
 	respond(w, code, map[string]string{"error": e.Error()})
 }
+
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 512<<10)
 	d := json.NewDecoder(r.Body)
@@ -640,6 +126,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	}
 	return nil
 }
+
 func (s *Server) session(r *http.Request) (Session, bool) {
 	cookie, e := r.Cookie("darkls_session")
 	if e != nil {
@@ -658,6 +145,7 @@ func (s *Server) session(r *http.Request) (Session, bool) {
 	}
 	return v, ok
 }
+
 func (s *Server) allowedIP(r *http.Request) bool {
 	host, _, e := net.SplitHostPort(r.RemoteAddr)
 	if e != nil {
@@ -669,6 +157,7 @@ func (s *Server) allowedIP(r *http.Request) bool {
 	}
 	return ip.IsLoopback() || netip.MustParsePrefix("192.168.50.0/24").Contains(ip.Unmap())
 }
+
 func (s *Server) handler() http.Handler {
 	sub, _ := fs.Sub(webFiles, "web")
 	static := http.FileServer(http.FS(sub))
@@ -802,6 +291,7 @@ func (s *Server) handler() http.Handler {
 		}
 	})
 }
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(405)
@@ -853,6 +343,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "darkls_session", Value: key, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 43200})
 	respond(w, 200, map[string]string{"csrf": sess.CSRF})
 }
+
 func (s *Server) mutate(w http.ResponseWriter, r *http.Request) {
 	if !s.mutation.TryLock() {
 		fail(w, 409, errors.New("настройки уже применяются"))
@@ -948,17 +439,22 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request) {
 		respond(w, 200, map[string]bool{"ok": true})
 	}
 }
+
 func (s *Server) status(w http.ResponseWriter) {
-	check := func(name string, args ...string) bool { _, e := s.run(name, args...); return e == nil }
+	// Keep status within the browser's timeout even if a router utility stalls.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	check := func(name string, args ...string) bool { _, e := s.runner.Run(ctx, name, args...); return e == nil }
 	nat := check("iptables", "-t", "nat", "-C", "PREROUTING", "-i", "br0", "-s", "192.168.50.0/24", "-j", "DV_NAT")
 	udp := check("iptables", "-t", "mangle", "-C", "PREROUTING", "-i", "br0", "-s", "192.168.50.0/24", "-j", "DV_UDP")
-	xray := check("pidof", "xray")
+	xray := len(s.mainXrayPIDsContext(ctx)) > 0
 	dns := pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf")
 	watch := pidMatches("/tmp/darkls-watch.pid", "/jffs/xray/watch.sh")
 	probe := readProbeState()
-	fresh := probe.CheckedAt > 0 && time.Since(time.Unix(probe.CheckedAt, 0)) >= 0 && time.Since(time.Unix(probe.CheckedAt, 0)) < 100*time.Second
+	fresh := probeFresh(probe, time.Now())
 	respond(w, 200, map[string]any{"active": nat && udp && xray && dns && !s.disabled() && probe.OK && fresh, "routes": nat && udp && xray && dns, "disabled": s.disabled(), "nat": nat, "udp": udp, "xray": xray, "dns": dns, "watch": watch, "version": version, "probe": probe, "probe_fresh": fresh})
 }
+
 func pidMatches(file, match string) bool {
 	b, e := os.ReadFile(file)
 	if e != nil {
@@ -1022,7 +518,6 @@ func main() {
 		return
 	}
 	if *checkRouter {
-		maintainLogs()
 		if e := s.checkRouter(); e != nil {
 			fmt.Fprintln(os.Stderr, e)
 			os.Exit(1)
@@ -1183,11 +678,6 @@ func main() {
 	if e := s.recoverJournal(); e != nil {
 		log.Fatal("восстановление незавершённого применения: ", e)
 	}
-	go s.deviceLoop()
-	go s.githubLoop()
-	go s.advancedLoop()
-	go s.coreLoop()
-	go s.cleanupLoop()
 	listener, e := net.Listen("tcp", *listen)
 	if e != nil {
 		log.Fatal(e)
@@ -1197,6 +687,11 @@ func main() {
 		log.Fatal(e)
 	}
 	defer os.Remove(pidPath)
+	// Start workers only after binding the listener: a second panel process must
+	// not mutate router state when its HTTP port is already occupied.
+	background, cancelBackground := context.WithCancel(context.Background())
+	defer cancelBackground()
+	s.startBackground(background)
 	server := &http.Server{Handler: s.handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 180 * time.Second, IdleTimeout: 15 * time.Second, MaxHeaderBytes: 16 << 10}
 	log.Printf("DARKLS panel %s: %s", version, *listen)
 	if e = server.Serve(listener); e != nil && !errors.Is(e, http.ErrServerClosed) {

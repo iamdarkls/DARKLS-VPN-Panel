@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -83,31 +84,70 @@ func (s *Server) currentCoreVersion() string {
 func newerRelease(a, b string) bool {
 	return releasePattern.MatchString(a) && releasePattern.MatchString(b) && releaseAtLeast(a, b) && !releaseAtLeast(b, a)
 }
+
+// The byte-getter adapter keeps discovery testable without a network. Production
+// uses githubRead so the full release list is never retained in RAM.
 func fetchCoreRelease(ctx context.Context, get func(context.Context, string, int64) ([]byte, error)) (CoreRelease, error) {
-	var result CoreRelease
-	b, e := get(ctx, "https://api.github.com/repos/"+coreRepository+"/releases?per_page=30", 4<<20)
-	if e != nil {
-		return result, e
+	return fetchCoreReleaseStream(ctx, func(ctx context.Context, url string, limit int64, consume func(io.Reader) error) error {
+		b, e := get(ctx, url, limit)
+		if e != nil {
+			return e
+		}
+		return consume(bytes.NewReader(b))
+	})
+}
+
+func selectCoreRelease(r io.Reader) (ghRelease, error) {
+	dec := json.NewDecoder(r)
+	start, e := dec.Token()
+	if e != nil || start != json.Delim('[') {
+		return ghRelease{}, errors.New("список официальных выпусков Xray не распознан")
 	}
-	var releases []ghRelease
-	if json.Unmarshal(b, &releases) != nil {
-		return result, errors.New("список официальных выпусков Xray не распознан")
-	}
-	var rel ghRelease
-	for _, candidate := range releases {
+	var best ghRelease
+	for dec.More() {
+		var candidate ghRelease
+		if e = dec.Decode(&candidate); e != nil {
+			return ghRelease{}, e
+		}
 		v := strings.TrimPrefix(candidate.Tag, "v")
 		if candidate.Draft || !strings.HasPrefix(candidate.Tag, "v") || !releasePattern.MatchString(v) {
 			continue
 		}
 		for _, asset := range candidate.Assets {
-			if asset.Name == coreAssetName && (rel.Tag == "" || newerRelease(v, strings.TrimPrefix(rel.Tag, "v"))) {
-				rel = candidate
+			if asset.Name == coreAssetName && (best.Tag == "" || newerRelease(v, strings.TrimPrefix(best.Tag, "v"))) {
+				// Only the selected release is retained; validation happens afterwards.
+				if len(candidate.Body) > 8192 {
+					candidate.Body = strings.Clone(candidate.Body[:8192])
+				}
+				best = candidate
 				break
 			}
 		}
 	}
-	if rel.Tag == "" {
-		return result, errors.New("официальный выпуск Xray для Linux ARM64 не найден")
+	if end, err := dec.Token(); err != nil || end != json.Delim(']') {
+		return ghRelease{}, errors.New("список выпусков Xray оборван")
+	}
+	// Reject a truncated list or trailing JSON rather than trusting a partial result.
+	var extra any
+	if e = dec.Decode(&extra); e != io.EOF {
+		return ghRelease{}, errors.New("лишние данные в списке выпусков Xray")
+	}
+	if best.Tag == "" {
+		return best, errors.New("официальный выпуск Xray для Linux ARM64 не найден")
+	}
+	return best, nil
+}
+
+func fetchCoreReleaseStream(ctx context.Context, read func(context.Context, string, int64, func(io.Reader) error) error) (CoreRelease, error) {
+	var result CoreRelease
+	var rel ghRelease
+	e := read(ctx, "https://api.github.com/repos/"+coreRepository+"/releases?per_page=30", 4<<20, func(r io.Reader) error {
+		var err error
+		rel, err = selectCoreRelease(r)
+		return err
+	})
+	if e != nil {
+		return result, e
 	}
 	assets := map[string]ghAsset{}
 	for _, a := range rel.Assets {
@@ -127,7 +167,8 @@ func fetchCoreRelease(ctx context.Context, get func(context.Context, string, int
 		if !ok || dg.URL != expected+".dgst" {
 			return result, errors.New("официальная SHA-256 не найдена")
 		}
-		b, e = get(ctx, dg.URL, 8192)
+		var b []byte
+		e = read(ctx, dg.URL, 8192, func(r io.Reader) error { var err error; b, err = io.ReadAll(r); return err })
 		if e != nil {
 			return result, e
 		}
@@ -161,7 +202,7 @@ func (s *Server) coreStatus() CoreStatus {
 }
 func (s *Server) checkCore(ctx context.Context) (CoreStatus, CoreRelease, error) {
 	st := CoreStatus{Current: s.currentCoreVersion(), CheckedAt: time.Now().Unix(), URL: "https://github.com/" + coreRepository + "/releases"}
-	rel, e := fetchCoreRelease(ctx, githubGet)
+	rel, e := fetchCoreReleaseStream(ctx, githubRead)
 	if e != nil {
 		st.Error = s.scrub(e.Error())
 	} else {
@@ -499,36 +540,34 @@ func autoCoreDue(p CoreSettings, st CoreStatus, now time.Time, healthy bool) boo
 	day := now.In(time.FixedZone("MSK", 3*3600))
 	return p.Check && p.AutoInstall && now.Year() >= 2025 && day.Hour() == p.Hour && day.Format("2006-01-02") != p.LastAutoDay && st.Available && p.Blocked[st.Latest] == 0 && healthy
 }
-func (s *Server) coreLoop() {
+func (s *Server) coreLoop(ctx context.Context) {
 	j := s.coreJob()
 	if coreJobActive(j) {
 		j.Finished = time.Now().Unix()
 		s.coreProgress(&j, "interrupted", "Панель перезапущена; проверьте версию и журнал восстановления")
 	}
-	timer := time.NewTimer(45 * time.Second)
-	defer timer.Stop()
-	for range timer.C {
+	runPeriodic(ctx, 45*time.Second, 15*time.Minute, func() {
 		if time.Now().Year() >= 2025 && !updateBusy() && s.coreMu.TryLock() {
 			p := s.coreSettings()
 			st := s.coreStatus()
-			if p.Check && !coreJobActive(s.coreJob()) && (st.CheckedAt == 0 || time.Since(time.Unix(st.CheckedAt, 0)) >= 24*time.Hour) {
-				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			if p.Check && !coreJobActive(s.coreJob()) && releaseCheckDue(time.Now(), st.CheckedAt, st.Error) {
+				ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 				st, _, _ = s.checkCore(ctx)
 				cancel()
 			}
-			s.tryAutoCore(p, st, time.Now())
+			if ctx.Err() == nil {
+				s.tryAutoCore(p, st, time.Now())
+			}
 			s.coreMu.Unlock()
 		}
-		timer.Reset(15 * time.Minute)
-	}
+	})
 }
 
 // coreMu is held by the scheduler. Job ownership passes both operation locks
 // to the worker only after the daily attempt has been durably recorded.
 func (s *Server) tryAutoCore(p CoreSettings, st CoreStatus, now time.Time) {
 	probe := readProbeState()
-	age := now.Unix() - probe.CheckedAt
-	healthy := probe.OK && age >= 0 && age < 100 && !s.disabled()
+	healthy := probe.OK && probeFresh(probe, now) && !s.disabled()
 	if !autoCoreDue(p, st, now, healthy) || coreJobActive(s.coreJob()) || runtime.GOARCH != "arm64" || !s.mutation.TryLock() {
 		return
 	}

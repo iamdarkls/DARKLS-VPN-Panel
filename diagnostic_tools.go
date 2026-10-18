@@ -35,7 +35,7 @@ func (s *Server) recordService(id string, r ServiceResult) {
 	now := time.Now().Unix()
 	entry := ServiceHistory{Service: id, At: now, State: r.State, Since: old.Since, MS: r.DurationMS}
 	probe := readProbeState()
-	if probe.CheckedAt > 0 && now-probe.CheckedAt < 100 {
+	if probeFresh(probe, time.Unix(now, 0)) {
 		entry.TunnelOK = boolRef(probe.OK)
 	}
 	if old.State != r.State {
@@ -207,58 +207,6 @@ func expireState(st State, now int64) (State, bool) {
 		}
 	}
 	return st, changed
-}
-func (s *Server) advancedLoop() {
-	go s.serviceMonitorLoop()
-	tick := time.NewTicker(15 * time.Second)
-	defer tick.Stop()
-	for range tick.C {
-		if time.Now().Year() < 2025 || updateBusy() {
-			continue
-		}
-		if !s.mutation.TryLock() {
-			continue
-		}
-		st, e := s.state()
-		if e == nil {
-			next, changed := expireState(st, time.Now().Unix())
-			if changed {
-				if _, e = s.apply(next, s.revision()); e != nil {
-					appendEvent("timer_error", s.scrub(e.Error()))
-				} else {
-					appendEvent("timer", "Временные настройки возвращены")
-				}
-			}
-		}
-		s.mutation.Unlock()
-	}
-}
-func (s *Server) serviceMonitorLoop() {
-	tick := time.NewTicker(15 * time.Second)
-	defer tick.Stop()
-	last := time.Time{}
-	for range tick.C {
-		p := s.preferences()
-		if time.Now().Year() < 2025 || updateBusy() || s.disabled() || !p.MonitorServices || time.Since(last) < time.Duration(p.Interval)*time.Second {
-			continue
-		}
-		last = time.Now()
-		st, _ := s.state()
-		for _, g := range st.Groups {
-			host, ok := serviceDomains[g.ID]
-			if !ok || !g.active(time.Now().Unix()) || updateBusy() {
-				continue
-			}
-			if !s.diagnosticMu.TryLock() {
-				continue
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			r := checkService(ctx, host)
-			cancel()
-			s.recordService(g.ID, r)
-			s.diagnosticMu.Unlock()
-		}
-	}
 }
 
 type StorageItem struct {

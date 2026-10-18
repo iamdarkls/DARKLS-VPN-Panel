@@ -112,7 +112,7 @@
 ```sh
 go test -race ./...
 go vet ./...
-python3 build_release.py --version 1.4.1
+python3 build_release.py --version 1.4.2
 ```
 
 Подписанный выпуск создаётся после изменения `release-version.txt` и отправки коммита в `main`. GitHub Actions выполняет проверки, собирает ARM64 ZIP, подписывает метаданные и создаёт Release на проверенном коммите. Версии и опубликованные теги не перезаписываются.

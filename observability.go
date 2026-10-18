@@ -46,6 +46,14 @@ func tmpLock(path string) (func(), error) {
 	return func() { syscall.Flock(int(f.Fd()), syscall.LOCK_UN); f.Close() }, nil
 }
 func readProbeState() ProbeState { var p ProbeState; _ = readJSON(probeStatePath, &p); return p }
+
+// Router clocks can jump during NTP synchronization. Future-dated samples must
+// never authorize an automatic update or be displayed as fresh connectivity.
+func probeFresh(p ProbeState, now time.Time) bool {
+	age := now.Unix() - p.CheckedAt
+	return p.CheckedAt > 0 && age >= 0 && age < 100
+}
+
 func recordProbe(err error, d time.Duration) {
 	release, e := tmpLock("/tmp/darkls-probe-state.lock")
 	if e != nil {

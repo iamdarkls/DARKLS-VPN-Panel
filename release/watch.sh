@@ -14,6 +14,7 @@ last_probe=0
 last_recovery=-180
 last_deep=0
 last_dns_failure=0
+last_maintenance=-60
 
 healthy() {
   REASON='Xray process missing'
@@ -45,9 +46,13 @@ recover() {
 }
 
 while :; do
-  "$BIN" --maintain-logs
   sh "$BASE/panel/service.sh" ensure
   now=$(awk '{print int($1)}' /proc/uptime)
+  # Log limits need one pass per minute, not another Go process every tick.
+  if [ $((now - last_maintenance)) -ge 60 ]; then
+    "$BIN" --maintain-logs
+    last_maintenance=$now
+  fi
   if [ -f "$BASE/autostart.disabled" ]; then
     failures=0
   elif ! healthy; then
@@ -83,12 +88,6 @@ while :; do
         recover
       fi
     fi
-  fi
-  # Bound the in-memory log without writing repeatedly to JFFS flash.
-  if [ -f /tmp/darkls-watch.log ] && [ "$(wc -c < /tmp/darkls-watch.log)" -gt 524288 ]; then
-    tail -n 300 /tmp/darkls-watch.log > /tmp/darkls-watch-log.tail
-    cat /tmp/darkls-watch-log.tail > /tmp/darkls-watch.log
-    rm -f /tmp/darkls-watch-log.tail
   fi
   sleep 15
 done

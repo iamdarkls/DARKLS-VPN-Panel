@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -146,10 +147,8 @@ func (s *Server) cleanupOld(now time.Time) (CleanupResult, error) {
 	}
 	return result, nil
 }
-func (s *Server) cleanupLoop() {
-	timer := time.NewTimer(2 * time.Minute)
-	defer timer.Stop()
-	for range timer.C {
+func (s *Server) cleanupLoop(ctx context.Context) {
+	runPeriodic(ctx, 2*time.Minute, 6*time.Hour, func() {
 		if s.cleanupSettings().Enabled && s.mutation.TryLock() {
 			release, e := s.pause()
 			if e == nil {
@@ -158,8 +157,7 @@ func (s *Server) cleanupLoop() {
 			}
 			s.mutation.Unlock()
 		}
-		timer.Reset(6 * time.Hour)
-	}
+	})
 }
 
 func (s *Server) storageStatus() map[string]any {

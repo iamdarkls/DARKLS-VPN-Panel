@@ -120,16 +120,19 @@ func githubHTTPClient(proxy bool) *http.Client {
 		return nil
 	}}
 }
-func githubGet(ctx context.Context, raw string, limit int64) ([]byte, error) {
+
+// githubRead keeps metadata bounded while allowing callers to decode a stream.
+// Each fallback attempt gets a new reader; consumers must replace partial state.
+func githubRead(ctx context.Context, raw string, limit int64, consume func(io.Reader) error) error {
 	if !allowedGitHubURL(raw) {
-		return nil, errors.New("неразрешённый адрес GitHub")
+		return errors.New("неразрешённый адрес GitHub")
 	}
 	var last error
 	for _, proxy := range []bool{false, true} {
 		client := githubHTTPClient(proxy)
 		req, e := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 		if e != nil {
-			return nil, e
+			return e
 		}
 		req.Header.Set("User-Agent", "DARKLS-VPN-Panel/"+version)
 		req.Header.Set("Accept", "application/vnd.github+json")
@@ -138,29 +141,46 @@ func githubGet(ctx context.Context, raw string, limit int64) ([]byte, error) {
 			last = e
 			continue
 		}
-		if resp.StatusCode != 200 {
+		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
+			client.CloseIdleConnections()
 			if resp.StatusCode == 404 {
-				return nil, errors.New("репозиторий или опубликованный Release пока не найден")
+				return errors.New("репозиторий или опубликованный Release пока не найден")
 			}
 			if resp.StatusCode == 403 || resp.StatusCode == 429 {
-				return nil, errors.New("GitHub ограничил запросы; повторите позже")
+				return errors.New("GitHub ограничил запросы; повторите позже")
 			}
 			last = fmt.Errorf("GitHub HTTP %d", resp.StatusCode)
 			continue
 		}
-		b, e := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+		reader := &io.LimitedReader{R: resp.Body, N: limit + 1}
+		e = consume(reader)
+		// Even a consumer that stops early must not bypass the response size cap.
+		if e == nil {
+			_, e = io.Copy(io.Discard, reader)
+		}
 		resp.Body.Close()
+		client.CloseIdleConnections()
+		if reader.N == 0 {
+			return errors.New("ответ GitHub слишком большой")
+		}
 		if e != nil {
 			last = e
 			continue
 		}
-		if int64(len(b)) > limit {
-			return nil, errors.New("ответ GitHub слишком большой")
-		}
-		return b, nil
+		return nil
 	}
-	return nil, fmt.Errorf("GitHub недоступен напрямую и через VPN: %v", last)
+	return fmt.Errorf("GitHub недоступен напрямую и через VPN: %v", last)
+}
+
+func githubGet(ctx context.Context, raw string, limit int64) ([]byte, error) {
+	var data []byte
+	err := githubRead(ctx, raw, limit, func(r io.Reader) error {
+		var e error
+		data, e = io.ReadAll(r)
+		return e
+	})
+	return data, err
 }
 func fetchGitHubRelease(ctx context.Context) (GitHubStatus, SignedRelease, string, error) {
 	return fetchGitHubReleaseWith(ctx, trustedReleaseKey(), githubGet)
@@ -248,26 +268,18 @@ func (s *Server) checkGitHub(ctx context.Context) GitHubStatus {
 	_ = atomicWrite("/tmp/darkls-github-status.json", jsonBytes(st))
 	return st
 }
-func (s *Server) githubLoop() {
-	timer := time.NewTimer(30 * time.Second)
-	defer timer.Stop()
-	for {
-		<-timer.C
+func (s *Server) githubLoop(ctx context.Context) {
+	runPeriodic(ctx, 30*time.Second, 30*time.Minute, func() {
 		if len(trustedReleaseKey()) > 0 && time.Now().Year() >= 2025 && !updateBusy() && s.githubMu.TryLock() {
 			st := s.githubStatus()
-			delay := 24 * time.Hour
-			if st.Error != "" {
-				delay = time.Hour
-			}
-			if st.CheckedAt == 0 || time.Since(time.Unix(st.CheckedAt, 0)) >= delay {
-				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			if releaseCheckDue(time.Now(), st.CheckedAt, st.Error) {
+				ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 				s.checkGitHub(ctx)
 				cancel()
 			}
 			s.githubMu.Unlock()
 		}
-		timer.Reset(30 * time.Minute)
-	}
+	})
 }
 func (s *Server) githubAPI(w http.ResponseWriter, r *http.Request, install bool) {
 	if !s.githubMu.TryLock() {

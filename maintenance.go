@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -40,7 +41,7 @@ func trimLog(path string, maximum, keep int64) error {
 	if e != nil {
 		return e
 	}
-	if i := strings.IndexByte(string(b), '\n'); i >= 0 {
+	if i := bytes.IndexByte(b, '\n'); i >= 0 {
 		b = b[i+1:]
 	}
 	if e = f.Truncate(0); e != nil {
@@ -52,6 +53,10 @@ func trimLog(path string, maximum, keep int64) error {
 	return nil
 }
 func maintainLogs() {
+	// The watchdog uses an append descriptor too; retain its inode like Xray's.
+	if e := trimLog("/tmp/darkls-watch.log", 512<<10, 64<<10); e != nil {
+		fmt.Fprintln(os.Stderr, "log maintenance: darkls-watch.log", e)
+	}
 	for _, name := range []string{"xray.log", "dnsmasq-vpn.log", "darkls-panel.log", "darkls-update-worker.log", "darkls-candidate.log", "darkls-components.log"} {
 		if e := trimLog("/tmp/"+name, 2<<20, 256<<10); e != nil {
 			fmt.Fprintln(os.Stderr, "log maintenance:", name, e)
