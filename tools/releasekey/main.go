@@ -18,7 +18,7 @@ import (
 func main() {
 	mode := flag.String("mode", "keygen", "keygen or sign")
 	private := flag.String("private", "", "private key path (keygen only)")
-	public := flag.String("public", "github-public-key.txt", "public key file")
+	public := flag.String("public", "assets/github-public-key.txt", "public key file")
 	archive := flag.String("archive", "", "release ZIP")
 	version := flag.String("version", "", "release version")
 	out := flag.String("out", "dist", "output directory")

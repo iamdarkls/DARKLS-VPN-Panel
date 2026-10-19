@@ -10,7 +10,7 @@ go vet ./...
 python3 -m unittest discover -s tools -p "test_*.py"
 sh -n release/install-update.sh
 sh -n release/watch.sh
-python3 build_release.py
+python3 tools/build_release.py
 ```
 
 Подписанный выпуск создаётся после изменения `release-version.txt` и отправки коммита в `main`. GitHub Actions выполняет проверки, собирает ARM64 ZIP, подписывает метаданные и создаёт Release на проверенном коммите. Версии и опубликованные теги не перезаписываются.
@@ -19,21 +19,21 @@ python3 build_release.py
 
 Проверки проекта включают Go race/vet, тесты метаданных/архивов/таймеров/очистки/отката, браузерные сценарии и имитацию установщика. **Реальная установка нового ядра, скорость и длительная стабильность проверяются на ASUS.**
 
-Опциональная проверка gRPC на официальном локальном Xray: `DARKLS_XRAY_TEST_BINARY=/путь/к/xray go test -run TestGRPCNativeLoopback -v`. Клиент, сервер и HTTP-цель запускаются только на loopback. Проверяются Gun/Multi без TLS и с тестовым самоподписанным сертификатом; реквизиты реального VPN не используются.
+Опциональная проверка gRPC на официальном локальном Xray: `DARKLS_XRAY_TEST_BINARY=/путь/к/xray go test ./internal/panel -run TestGRPCNativeLoopback -v`. Клиент, сервер и HTTP-цель запускаются только на loopback. Проверяются Gun/Multi без TLS и с тестовым самоподписанным сертификатом; реквизиты реального VPN не используются.
 
 ## Модули и браузерные проверки
 
-`web/ui.js` содержит общие DOM-элементы и защиту черновиков, `web/navigation.js` — реестр разделов и загрузчиков. Далее загружаются `app.js` и функциональные модули. Скрипты исполняются последовательно с `defer`; сборщик фронтенда не требуется.
+`web/js/core/ui.js` содержит общие DOM-элементы и FormDraft, `web/js/components/navigation.js` — PanelNavigation и реестр разделов. Далее загружаются `web/js/features/app.js` и остальные функциональные модули. Скрипты исполняются последовательно с `defer`; сборщик фронтенда не требуется.
 
 Браузерные сценарии требуют Node.js, Playwright и Chromium:
 
 ```sh
-GO_BIN=go NODE_BIN=node CHROME_PATH=/путь/к/chromium python3 integration/run_browser.py
+GO_BIN=go NODE_BIN=node CHROME_PATH=/путь/к/chromium python3 tests/integration/run_browser.py
 ```
 
 `NODE_PATH` указывается, если Playwright установлен вне проекта. Тестовый сервер и сценарий запускаются одним процессом-обёрткой: данные временные, подключение к домашнему VPN не требуется. Проверяются навигация, черновики, серверы, уведомления, обновления и мобильная вёрстка.
 
-`integration/test_installer.py` и `integration/test_ota.py` принимают `DARKLS_BASELINE_BINARY` и `DARKLS_CURRENT_BINARY`: пути к исполняемым бинарникам прежней и новой версии для архитектуры тестовой машины. Эти сценарии используют заглушки роутера, проверяют установку, сохранение пароля и откат при отказе старта.
+`tests/integration/test_installer.py` и `tests/integration/test_ota.py` принимают `DARKLS_BASELINE_BINARY` и `DARKLS_CURRENT_BINARY`: пути к исполняемым бинарникам прежней и новой версии для архитектуры тестовой машины. Эти сценарии используют заглушки роутера, проверяют установку, сохранение пароля и откат при отказе старта.
 
 ## Сборка и публикация
 
@@ -41,4 +41,20 @@ GO_BIN=go NODE_BIN=node CHROME_PATH=/путь/к/chromium python3 integration/ru
 
 В ZIP входят только бинарник, четыре shell-скрипта и `manifest.json`. Исходники, тесты и документация в пакет роутера не попадают. Локальная сборка не подписывает выпуск: подпись создаётся GitHub Actions закреплённым ключом проекта.
 
-Перед публикацией согласуются `release-version.txt`, версия в `main.go`, начальная подпись версии интерфейса и раздел `CHANGELOG.md`. Описание GitHub Release извлекается из этого раздела; README остаётся руководством, а не журналом изменений.
+Перед публикацией согласуются `release-version.txt`, версия в `internal/panel/cli.go`, начальная подпись версии интерфейса и раздел `CHANGELOG.md`. Описание GitHub Release извлекается из этого раздела; README остаётся руководством, а не журналом изменений.
+
+## Точки входа после переноса папок
+
+Из корня репозитория:
+
+```sh
+go run ./cmd/darkls-panel --version
+go build -o /tmp/darkls-panel ./cmd/darkls-panel
+go test ./internal/panel -run TestBrowserHarness -v
+```
+
+Последняя команда сама по себе не запускает браузер: для полного сценария используется `tests/integration/run_browser.py`. Go-тесты лежат рядом с внутренним пакетом и входят в `go test -race ./...`; браузерные сценарии — в `tests/browser/`.
+
+Версия бинарника задаётся сборщиком через `-X darkls-panel/internal/panel.version=<версия>`. Прежний путь `main.version` после выделения пакета не используется. Публичный ключ подписи имеет единственный исходник `assets/github-public-key.txt`; `tools/releasekey` использует этот путь по умолчанию. Каталог `assets/` не должен содержать приватные ключи.
+
+Реорганизация касается исходников. На роутере по-прежнему устанавливается один бинарник и прежние shell-скрипты, а манифест и формат шестикомпонентного ZIP не меняются.

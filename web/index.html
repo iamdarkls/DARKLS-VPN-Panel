@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DARKLS · VPN</title><link rel="stylesheet" href="/style.css"><script src="/theme.js"></script><script src="/ui.js" defer></script><script src="/navigation.js" defer></script><script src="/app.js" defer></script><script src="/notifications.js" defer></script><script src="/advanced.js" defer></script><script src="/core.js" defer></script><script src="/manage.js" defer></script></head>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DARKLS · VPN</title><link rel="stylesheet" href="/css/style.css"><script src="/js/core/theme.js"></script><script src="/js/core/ui.js" defer></script><script src="/js/components/navigation.js" defer></script><script src="/js/features/app.js" defer></script><script src="/js/components/notifications.js" defer></script><script src="/js/features/advanced.js" defer></script><script src="/js/features/core.js" defer></script><script src="/js/features/manage.js" defer></script></head>
 <body>
 <div class="appearance"><label for="theme-select">Тема</label><select id="theme-select" aria-label="Тема оформления"><option value="auto">Как в системе</option><option value="light">Светлая</option><option value="dark">Тёмная</option></select></div>
 <section id="login" class="login"><form id="login-form" class="login-card"><div class="brand">D<span>↗</span></div><p class="eyebrow">ДОМАШНЯЯ СЕТЬ</p><h1>Сеть под<br>контролем.</h1><p class="muted">Панель DARKLS VPN для ASUS</p><label>Логин<input name="user" value="admin" autocomplete="username" required></label><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label><button class="primary" type="submit">Войти в панель <span>→</span></button><p id="login-error" class="error" role="alert"></p><p class="tiny muted">Адрес панели: 192.168.50.1:8088</p></form></section>
@@ -22,7 +22,7 @@
 <button class="nav" data-view="logs">≡ <span>Журнал</span></button>
 <button class="nav" data-view="settings">⚙ <span>Пароль панели</span></button>
 </div>
-</nav><div class="aside-bottom"><span class="mini-dot"></span> Локальная панель<button id="logout" class="link-button">Выйти ↗</button><span class="tiny" id="version">v1.7.1</span></div></aside>
+</nav><div class="aside-bottom"><span class="mini-dot"></span> Локальная панель<button id="logout" class="link-button">Выйти ↗</button><span class="tiny" id="version">v1.8.0</span></div></aside>
 <main><header><div><p class="eyebrow">NETWORK CONTROL</p><h1 id="page-title">Сайты и сервисы</h1><p class="muted" id="page-subtitle">Выбирай, что открывать через твой VPN.</p></div><div id="connection" class="status-pill">Проверяем…</div></header>
 <section class="health"><div><span id="vpn-light" class="big-dot"></span><div><strong id="vpn-title">Проверяем подключение</strong><p class="muted" id="vpn-desc">Читаем состояние роутера…</p></div></div><button id="power" class="secondary">…</button><div id="checks" class="checks"></div></section>
 <div id="notice" class="notice hidden" role="status"></div>

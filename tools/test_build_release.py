@@ -9,7 +9,7 @@ import unittest
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('build_release', ROOT / 'build_release.py')
+spec = importlib.util.spec_from_file_location('build_release', ROOT / 'tools/build_release.py')
 build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
 

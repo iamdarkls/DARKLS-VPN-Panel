@@ -14,7 +14,7 @@ DARKLS_BASELINE_BINARY=/path/to/baseline DARKLS_OPTIMIZED_BINARY=/path/to/curren
 ## Разбор метаданных Xray: 1.4.1 → 1.4.2
 
 ```sh
-go test -run '^$' -bench BenchmarkCoreMetadata -benchmem -count=3
+go test ./internal/panel -run '^$' -bench BenchmarkCoreMetadata -benchmem -count=3
 ```
 
 Одинаковый синтетический JSON из 30 выпусков с длинными примечаниями. Медиана суммарных выделений на один разбор: **6 400 422 → 2 119 524 байта**, примерно на 67% меньше. Потоковый путь не создаёт копию всего ответа и полный массив выпусков. Число отдельных выделений выросло со 102 до 232; выигрыш относится к объёму выделяемых данных.
