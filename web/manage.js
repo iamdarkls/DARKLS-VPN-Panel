@@ -1,7 +1,7 @@
 'use strict';
 // Server cards contain metadata only. Credentials are revealed into a modal,
 // never into storage, and cleared on cancel, save and logout.
-const serverView = $('servers-view');
+const serverView = $('servers-main');
 const connectionBox = box(serverView, 'Текущее подключение', 'Сейчас роутер использует это подключение. Сохранение копии не меняет работающий VPN.');
 connectionBox.classList.add('current-connection');
 const connectionFacts = output(connectionBox);
@@ -234,9 +234,10 @@ async function loadDiagnosticDevices() {
   }
   n.value = [...n.options].some(o=>o.value===selected) ? selected : '';
 }
-const dailyBox = box($('stability-view'), 'Сводка за последние 24 часа', 'Доступность по периодическим HTTPS-пробам общего туннеля. Состояние отдельных сайтов может отличаться.');
+const dailyBox = box($('stability-history'), 'Сводка за последние 24 часа', 'Доступность по периодическим HTTPS-пробам общего туннеля. Состояние отдельных сайтов может отличаться.');
+$('stability-history').prepend(dailyBox);
 const dailyFacts = output(dailyBox), dailyNote = el('p','tiny muted'); dailyBox.append(dailyNote);
-const activityBox = box($('stability-view'), 'Уведомления о связи', 'Последние события за сутки. Отметка прочитанного сохраняется только в этом браузере.');
+const activityBox = box($('stability-history'), 'Уведомления о связи', 'Последние события за сутки. Отметка прочитанного сохраняется только в этом браузере.');
 const activityList = output(activityBox);
 let activityLatest = '', activityRead = '';
 const activityShown = new Set();

@@ -1,5 +1,5 @@
 'use strict';
-const coreBox = box($('settings-view').querySelector('.settings-grid'), 'Обновления ядра Xray',
+const coreBox = box($('updates-core'), 'Обновления ядра Xray',
   'Официальные стабильные выпуски и пререлизы XTLS/Xray-core для Linux ARM64. Автопроверка раз в сутки; установка по кнопке или в выбранный час МСК. Автоустановка изначально выключена. При замене ядра VPN-соединения кратко переподключатся.'
   );
 coreBox.classList.add('wide');
@@ -150,7 +150,7 @@ function startCorePolling() {
     }
   }, 2500)
 }
-const cleanupBox = box($('backups-view'), 'Автоочистка через неделю',
+const cleanupBox = box($('backups-files'), 'Автоочистка через неделю',
   'Удаляем только известные лишние копии и временные файлы старше 7 дней. Последняя копия панели, последняя копия ядра и последний снимок настроек остаются. Текущие программы, VPN-ключи, пароль и USB-автозапуск не удаляются.'
   );
 const cleanupEnabled = check(cleanupBox, 'Удалять лишние файлы старше недели'),

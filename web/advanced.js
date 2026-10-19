@@ -129,8 +129,10 @@ const stateLabel = s => ({
   connection_error: 'Ошибка соединения',
   http_error: 'HTTP-ошибка'
 } [s] || s);
-const stability = $('stability-view');
-const connectivityBox = box(stability, 'Что именно не отвечает',
+const recovery = $('stability-recovery');
+const diagnostics = $('diagnostics-view');
+const tuning = $('tuning-view');
+const connectivityBox = box(diagnostics, 'Что именно не отвечает',
   'Прямой HTTPS, TCP VPN-сервера, DNS, правила и общий туннель проверяются отдельно. Неудача одного сайта не перезапускает VPN. Проверка прямого HTTPS через одного провайдера может не подтвердить доступ, даже если часть интернета работает.'
   );
 const connectivityResult = output(connectivityBox);
@@ -157,7 +159,7 @@ reportLink.href = '/api/report';
 connectivityBox.append(reportLink, el('p', 'tiny muted',
   'JSON: версии, память, правила, результаты проверок и последние ошибки. Пароли и VPN-ключи исключены, IP и MAC заменены метками. История выбранных проверок остаётся. Сбор может занять до 40 секунд.'
   ));
-const recoveryBox = box(stability, 'Восстановить отдельную часть',
+const recoveryBox = box(recovery, 'Восстановить отдельную часть',
   'Автоконтроль сначала чинит процессы, DNS helper и правила. Xray перезапускается только при неисправности его туннеля или DNS-входа. Подключения могут оборваться при переключении канала и перезапуске Xray.'
   );
 for (const [component, label] of [
@@ -183,7 +185,7 @@ button(recoveryBox, 'Перезапустить Xray', async () => {
   xrayPassword.value = '';
   notice('Xray перезапущен. DNS helper и правила сохранены.')
 });
-const dependencyBox = box(stability, 'Зависимости сервиса',
+const dependencyBox = box(diagnostics, 'Зависимости сервиса',
   'Проверка известных доменов: DNS, включённая группа и IP в VPN-наборе. HTTPS основной страницы проверяется отдельно. Это проверка с роутера; учётная запись, WebRTC и браузер не проверяются.'
   );
 const knownServices = [
@@ -222,7 +224,7 @@ button(dependencyBox, 'Проверить зависимости', async () => {
   dependencyResult.append(el('p', '', d.https.message), el('p', 'tiny muted', d.note));
   await loadServiceHistory()
 });
-const historyBox = box(stability, 'История состояния сервисов',
+const historyBox = box($('stability-history'), 'История состояния сервисов',
   'Периодические проверки включённых известных сервисов. Ошибка DNS, тайм-аут, ответ сайта и Cloudflare показаны отдельно. Пустое состояние туннеля означает отсутствие свежего общего замера.'
   );
 const historyResult = output(historyBox);
@@ -251,7 +253,7 @@ async function loadServiceHistory() {
       .state) + ' · прежнее состояние ' + r.previous_duration_seconds + ' с'));
   historyResult.append(details, el('p', 'tiny muted', d.retention))
 }
-const quicBox = box(stability, 'Сравнить QUIC и TCP для группы',
+const quicBox = box(tuning, 'Сравнить QUIC и TCP для группы',
   'HTTPS-тесты панели используют TCP и не измеряют QUIC. Для честного сравнения включи пробный режим на 5 минут, перезапусти приложение на устройстве и открой тот же ролик/сервис. Затем оцени результат. Таймер вернёт прежний выбор; рабочий вариант можно сохранить в настройках группы.'
   );
 const quicGroup = select(quicBox, knownServices, 'Группа'),
@@ -273,7 +275,7 @@ for (const [verdict, label] of [
   notice('Оценка сохранена в истории.');
   await loadServiceHistory()
 });
-const timerBox = box(stability, 'Временно включить группу',
+const timerBox = box($('sites-timer-content'), 'Временно включить группу',
   'Кнопка «Включить на час» есть на карточке каждой группы. Здесь можно выбрать другой срок. Прежнее состояние вернётся автоматически, в том числе после перезагрузки и синхронизации часов. Для устройств сохраняется общий выбранный режим.'
   );
 const timerGroup = select(timerBox, [], 'Группа'),
@@ -296,7 +298,7 @@ render = function() {
     if (state.groups.some(g => g.id === selected)) timerGroup.value = selected
   }
 };
-const xhttpBox = box(stability, 'Сравнить параметры XHTTP',
+const xhttpBox = box(tuning, 'Сравнить параметры XHTTP',
   'Текущие параметры, 2 и 4 соединения сравниваются последовательно в отдельном процессе Xray. До 3 МиБ тестовых загрузок плюс HTTPS-пробы; нужен запас 96 МиБ доступной RAM. Рабочий канал не меняется. Короткий тест не подтверждает длительную стабильность — повтори замеры в разное время.'
   );
 const xhttpResult = output(xhttpBox);
@@ -337,7 +339,7 @@ button(xhttpBox, 'Проверить и применить XHTTP', async () => {
   tuningPassword.value = '';
   notice('Параметры применены после проверки. При ошибке предусмотрен откат.')
 });
-const loadBox = box(stability, 'Задержка под нагрузкой',
+const loadBox = box(tuning, 'Задержка под нагрузкой',
   'Ограниченная загрузка до 8 МиБ и 8 секунд. Сравни прямой канал и VPN, затем повтори во время видео на телефоне и скачивания на ПК. Роутер не включает QoS автоматически: сначала нужны измерения вашей линии.'
   );
 const loadVia = select(loadBox, [
@@ -360,8 +362,7 @@ button(loadBox, 'Измерить задержку под нагрузкой', a
   loadResult.append(el('p', 'tiny muted', d.note))
 });
 // Settings are kept local to the router. No endpoint or credentials in GET APIs.
-const settings = $('settings-view').querySelector('.settings-grid');
-const profileBox = box(settings, 'Резервный VPN-канал',
+const profileBox = box($('servers-backup'), 'Резервный VPN-канал',
   'Добавь независимый сервер/транспорт. Сначала проверим его отдельным Xray. До успешной проверки резерв не сохраняется; автоматическое переключение по умолчанию выключено. Уже открытые соединения при переключении могут оборваться.'
   );
 profileBox.classList.add('wide');
@@ -406,7 +407,7 @@ for (const [profile, label] of [
   }
   await loadAdvancedSettings()
 });
-const monitorBox = box(settings, 'Контроль связи',
+const monitorBox = box($('stability-monitor'), 'Контроль связи',
   'История и ограниченные HTTPS-пробы работают независимо от открытой панели. При отказе одного сервиса Xray не перезапускается. Резерв включается только при подтверждённом отказе общего туннеля и успешной проверке второго канала; автоматического возврата на основной нет.'
   );
 monitorBox.classList.add('wide');
@@ -446,7 +447,7 @@ async function loadAdvancedSettings() {
     ['Последнее переключение', stamp(f.last_switch)]
   ])
 }
-const storageBox = box($('backups-view'), 'Копии и установочные архивы',
+const storageBox = box($('backups-files'), 'Копии и установочные архивы',
   'Показываем доступные известные файлы отдельно от работающей панели и Xray. Текущие программы, настройки и USB-автозапуск удалить здесь нельзя. Прежнее ядро находится на флешке. Размеры файлов указаны без учёта сжатия JFFS.'
   );
 const storageResult = output(storageBox),

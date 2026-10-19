@@ -259,3 +259,23 @@ input,textarea,select,label input,label textarea,label select{font-size:16px}
 .server-card-head{flex-wrap:wrap}.status-pill{white-space:normal}.appearance{min-height:50px;height:auto}.appearance select{width:auto;min-width:165px}
 
 .nav span{min-width:0;overflow-wrap:anywhere}.server-meta{overflow-wrap:anywhere}
+
+/* Group primary navigation and keep long menus reachable on short screens. */
+aside{overflow-y:auto}.router-label{margin-bottom:22px}
+nav{gap:14px}.nav-group{display:flex;flex-direction:column;gap:3px}
+.nav-heading{font-size:14px;font-weight:650;letter-spacing:.04em;color:#8493b0;margin:0 0 3px 4px}
+.aside-bottom{margin-top:24px;flex-shrink:0}
+.section-tabs{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 24px;padding:6px;border:1px solid var(--line);background:var(--surface);border-radius:12px}
+.section-tabs button{border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);padding:10px 16px;font-size:16px;font-weight:650;min-height:44px}
+.section-tabs button:hover{background:var(--control-hover);color:var(--ink)}
+.section-tabs [aria-selected="true"]{background:var(--icon-bg);border-color:var(--notice-line);color:var(--green)}
+.tab-panel{min-width:0}.section-intro{color:var(--muted);margin-bottom:24px}
+#settings-view .settings-grid{grid-template-columns:minmax(0,620px)}
+#sites-timers{margin-top:24px}#sites-timer-content>.panel-box{border:0;box-shadow:none;padding:20px 0 0;margin:0}
+@media(max-width:760px){
+ nav{gap:12px;display:flex;flex-direction:column}
+ .nav-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+ .nav-heading{grid-column:1/-1;font-size:14px;margin:0 0 2px}
+ .section-tabs{gap:4px;margin-bottom:20px}.section-tabs button{flex:1;padding:9px 8px;font-size:15px}
+ .aside-bottom{margin:0;padding-top:10px}#settings-view .settings-grid{grid-template-columns:minmax(0,1fr)}
+}
