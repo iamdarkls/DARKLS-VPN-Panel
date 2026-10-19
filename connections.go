@@ -102,10 +102,34 @@ func (s *Server) connectionOutbound(id string) (map[string]any, error) {
 	}
 	return nil, errors.New("подключение не найдено")
 }
-func (s *Server) saveConnection(id, name string, out map[string]any) error {
-	name = strings.TrimSpace(name)
+func validConnectionName(name string) error {
 	if !utf8.ValidString(name) || utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 60 || strings.ContainsAny(name, "\r\n\x00") || strings.Contains(name, "://") {
 		return errors.New("название подключения: 1–60 символов без VPN-ссылки")
+	}
+	return nil
+}
+func (s *Server) renameConnection(id, name string) error {
+	name = strings.TrimSpace(name)
+	if e := validConnectionName(name); e != nil {
+		return e
+	}
+	list, e := s.connections()
+	if e != nil {
+		return e
+	}
+	for i := range list {
+		if list[i].ID == id {
+			list[i].Name = name
+			list[i].Updated = time.Now().Unix()
+			return s.writeConnections(list)
+		}
+	}
+	return errors.New("подключение не найдено")
+}
+func (s *Server) saveConnection(id, name string, out map[string]any) error {
+	name = strings.TrimSpace(name)
+	if e := validConnectionName(name); e != nil {
+		return e
 	}
 	list, e := s.connections()
 	if e != nil {
@@ -260,7 +284,7 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		return true
 	}
-	allowed := map[string]bool{"connection-reveal": true, "connection-parse": true, "connection-test": true, "connection-save": true, "connection-apply": true, "connection-use": true, "connection-delete": true, "connection-rollback": true}
+	allowed := map[string]bool{"connection-reveal": true, "connection-parse": true, "connection-test": true, "connection-save": true, "connection-apply": true, "connection-use": true, "connection-delete": true, "connection-rollback": true, "connection-rename": true, "connection-snapshot": true}
 	if !allowed[path] {
 		return false
 	}
@@ -300,6 +324,20 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		return true
 	}
+	if path == "connection-rename" {
+		release, e := s.pause()
+		if e != nil {
+			fail(w, 409, e)
+			return true
+		}
+		defer release()
+		if e = s.renameConnection(req.ID, req.Name); e != nil {
+			fail(w, 400, e)
+		} else {
+			respond(w, 200, map[string]bool{"ok": true})
+		}
+		return true
+	}
 	if path == "connection-delete" {
 		list, e := s.connections()
 		if e != nil {
@@ -334,7 +372,9 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	var out map[string]any
 	var e error
-	if path == "connection-rollback" {
+	if path == "connection-snapshot" {
+		out, e = s.connectionOutbound("current")
+	} else if path == "connection-rollback" {
 		out, e = s.connectionOutbound("previous")
 	} else if path == "connection-use" {
 		out, e = s.connectionOutbound(req.ID)
@@ -371,8 +411,12 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 	} else {
 		if e = s.testOutbound(ctx, out); e != nil {
 			e = errors.New("изолированная HTTPS-проверка не пройдена; изменения не сохранены")
-		} else if path == "connection-save" {
-			e = s.saveConnection(req.ID, req.Name, out)
+		} else if path == "connection-save" || path == "connection-snapshot" {
+			id := req.ID
+			if path == "connection-snapshot" {
+				id = ""
+			}
+			e = s.saveConnection(id, req.Name, out)
 		}
 	}
 	if e != nil {

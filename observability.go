@@ -62,6 +62,7 @@ func recordProbe(err error, d time.Duration) {
 	defer release()
 	p := readProbeState()
 	wasOK := p.OK
+	previousError := p.Error
 	hadSample := p.CheckedAt > 0
 	p.CheckedAt = time.Now().Unix()
 	p.OK = err == nil
@@ -77,7 +78,10 @@ func recordProbe(err error, d time.Duration) {
 		p.LastFailure = p.CheckedAt
 		p.Failures++
 		p.Error = redact(err.Error())
-		appendEvent("vpn_error", p.Error)
+		// Preserve every probe in history, but notify only a new failure or cause.
+		if !hadSample || wasOK || p.Error != previousError {
+			appendEvent("vpn_error", p.Error)
+		}
 	}
 	_ = atomicWrite(probeStatePath, jsonBytes(p))
 	if time.Now().Year() >= 2025 {

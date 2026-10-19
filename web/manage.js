@@ -1,38 +1,131 @@
 'use strict';
-// Credentials exist only in this form's memory. Read-only polling never reveals
-// them or replaces a draft; revealing/importing requires password + CSRF.
-const connectionBox = box($('settings-view').querySelector('.settings-grid'), 'Основное VPN-подключение',
-  'Импортируй VLESS-ссылку или outbound JSON. Перед заменой проверяем отдельное соединение и полный конфиг; при ошибке возвращаем прежнее подключение. Списки сайтов и устройств сохраняются.');
-connectionBox.classList.add('wide');
+// Server cards contain metadata only. Credentials are revealed into a modal,
+// never into storage, and cleared on cancel, save and logout.
+const serverView = $('servers-view');
+const connectionBox = box(serverView, 'Текущее подключение', 'Сейчас роутер использует это подключение. Сохранение копии не меняет работающий VPN.');
+connectionBox.classList.add('current-connection');
 const connectionFacts = output(connectionBox);
-const connectionPassword = field(connectionBox, 'Пароль для управления подключениями', 'password');
-function secretArea(parent, label) {
-  const wrap = el('label', '', label), n = el('textarea');
-  n.rows = 4; n.spellcheck = false; n.dataset.secret = 'true'; n.autocomplete = 'off';
-  wrap.append(n); parent.append(wrap); return n;
+button(connectionBox, '+ Добавить сервер', ()=>openConnectionEditor(), 'primary');
+button(connectionBox, 'Сохранить текущее в список', async ()=>{
+  const done=await authorizeConnection('Сохранить текущее подключение', 'Создадим проверенную копию текущего сервера. Работающий VPN не изменится.', 'Сохранить копию', {name:'Текущее подключение'},
+    data=>postConnection('connection-snapshot',data));
+  if (done) { await loadConnections(); notice('Текущее подключение сохранено в списке.') }
+});
+const previousConnectionButton = button(connectionBox, 'Вернуть предыдущее подключение', async ()=>{
+  cleanDraft();
+  const done=await authorizeConnection('Вернуть предыдущее подключение', 'Проверим прежний сервер и переключим VPN. Открытые VPN-соединения переподключатся.', 'Проверить и вернуть', {},data=>postConnection('connection-rollback',data));
+  if (done) { await loadConnections(); await status(); notice('Предыдущее подключение восстановлено.') }
+});
+const bankBox=box(serverView,'Мои серверы','Добавь сервер, сохрани его после проверки и подключайся отдельной кнопкой. Переименование и удаление копии не меняют работающий VPN.');
+const bankList=el('div','server-list'); bankList.id='server-list'; bankBox.append(bankList);
+let bankItems=[], connectionBase=null, editingConnectionID='';
+
+const authDialog=el('dialog','server-auth-dialog'); authDialog.setAttribute('aria-labelledby','server-auth-title');
+const authForm=el('form'), authTitle=el('h2'); authTitle.id='server-auth-title';
+const authDescription=el('p','muted');
+const authProgress=el('p','operation-progress');authProgress.setAttribute('role','status');
+authForm.append(authTitle,authDescription);
+const authName=field(authForm,'Новое название сервера'); authName.maxLength=60;
+const authPassword=field(authForm,'Текущий пароль панели','password'); authPassword.required=true;
+const authActions=el('div','dialog-actions'),authCancel=el('button','secondary','Отмена'),authSubmit=el('button','primary','Продолжить');
+authCancel.type='button';authSubmit.type='submit';authActions.append(authCancel,authSubmit);authForm.append(authProgress,authActions);authDialog.append(authForm);document.body.append(authDialog);
+let authPending=false;
+authCancel.onclick=()=>authDialog.close();
+authDialog.addEventListener('cancel',event=>{if(authPending)event.preventDefault()});
+async function postConnection(path,data) {
+  const session=csrf,result=await api(path,'POST',data);
+  if (!session || csrf!==session) throw new Error('Сеанс изменился; войди заново.');
+  return result;
 }
-const connectionRaw = secretArea(connectionBox, 'VLESS-ссылка или outbound JSON');
-const connectionRawMode = check(connectionBox, 'Использовать JSON / ссылку напрямую вместо полей ниже');
-const connectionFields = el('details', 'connection-fields');
-connectionFields.append(el('summary', '', 'Параметры VLESS вручную'));
-connectionBox.append(connectionFields);
-const connectionGrid = el('div', 'settings-grid'); connectionFields.append(connectionGrid);
-const conn = {};
-for (const [key, label, type] of [
-  ['address','Адрес сервера','text'], ['port','Порт сервера','number'], ['id','UUID VLESS','text'],
-  ['encryption','Encryption','text'], ['flow','Flow (можно оставить пустым)','text'],
-  ['sni','SNI / serverName','text'], ['fp','TLS fingerprint','text'],
-  ['pbk','Reality publicKey','text'], ['sid','Reality shortId','text'], ['spx','Reality spiderX','text'],
-  ['path','Путь транспорта','text'], ['host','Host транспорта','text'], ['serviceName','gRPC serviceName','text']
-]) {
-  conn[key] = field(connectionGrid, label, type); conn[key].dataset.secret = 'true'; conn[key].autocomplete = 'off';
+function authorizeConnection(title,description,label,options,perform) {
+  if(authDialog.open) throw new Error('Сначала заверши открытое действие.');
+  authTitle.textContent=title;authDescription.textContent=description;authSubmit.textContent=label;
+  authName.parentElement.classList.toggle('hidden',options.name===undefined);
+  authName.value=options.name || '';authPassword.value='';authName.required=options.name!==undefined;
+  let result=null;
+  const requestSession=csrf;
+  return new Promise(resolve=>{
+    authDialog.addEventListener('close',()=>{authPassword.value='';authName.value='';authForm.onsubmit=null;resolve(result)},{once:true});
+    authForm.onsubmit=event=>{
+      event.preventDefault();if(authPending)return;
+      authPending=true;authCancel.disabled=true;authProgress.textContent='Выполняем действие… Дождись завершения.';
+      action(authSubmit,async()=>{
+        try {
+          const value=await perform({password:authPassword.value,...(options.name!==undefined?{name:authName.value.trim()}:{})});
+          if(!csrf || csrf!==requestSession)return;
+          result=value || true;authDialog.close();
+        } finally {authPassword.value='';authPending=false;authCancel.disabled=false;authProgress.textContent=''}
+      });
+    };
+    authDialog.showModal();
+  });
 }
-conn.port.min = 1; conn.port.max = 65535;
-conn.network = select(connectionGrid, ['tcp','raw','xhttp','ws','grpc'].map(x=>[x,x]), 'Транспорт');
-conn.security = select(connectionGrid, ['none','reality','tls'].map(x=>[x,x]), 'Защита транспорта');
-conn.mode = select(connectionGrid, ['auto','packet-up','stream-up','stream-one'].map(x=>[x,x]), 'Режим XHTTP');
-conn.extra = secretArea(connectionFields, 'XHTTP extra JSON (сохраняет XMUX и дополнительные настройки)');
-let connectionBase = null;
+
+const connectionDialog=el('dialog','connection-dialog');connectionDialog.setAttribute('aria-labelledby','connection-editor-title');
+const editorHeading=el('div','dialog-heading'),editorTitle=el('h2');editorTitle.id='connection-editor-title';
+const editorClose=el('button','icon-button','×');editorClose.type='button';editorClose.setAttribute('aria-label','Закрыть редактор сервера');editorHeading.append(editorTitle,editorClose);connectionDialog.append(editorHeading);
+const editorHelp=el('p','muted');connectionDialog.append(editorHelp);
+const bankName=field(connectionDialog,'Название сервера');bankName.maxLength=60;
+const editorMode=select(connectionDialog,[['link','Ссылка VLESS или outbound JSON'],['manual','Параметры вручную']],'Способ ввода');
+function secretArea(parent,label) {
+  const wrap=el('label','',label),n=el('textarea');n.rows=4;n.spellcheck=false;n.dataset.secret='true';n.autocomplete='off';wrap.append(n);parent.append(wrap);return n;
+}
+const rawWrap=el('div');connectionDialog.append(rawWrap);
+const connectionRaw=secretArea(rawWrap,'VLESS-ссылка или outbound JSON');
+const importButton=button(rawWrap,'Разобрать в ручные поля',async()=>{
+  const d=await connectionRequest('connection-parse',{outbound:connectionRaw.value});populateConnection(d.outbound);editorMode.value=connectionRawMode.checked?'link':'manual';syncEditorMode();notice('Параметры разобраны. Сервер ещё не сохранён.');
+});
+const connectionRawMode={get checked(){return editorMode.value==='link'},set checked(value){editorMode.value=value?'link':'manual'}};
+const connectionFields=el('div','connection-fields hidden');connectionDialog.append(connectionFields);
+const connectionGrid=el('div','settings-grid');connectionFields.append(connectionGrid);
+const conn={};
+for(const [key,label,type] of [
+ ['address','Адрес сервера','text'],['port','Порт сервера','number'],['id','UUID VLESS','text'],['encryption','Encryption','text'],['flow','Flow (можно оставить пустым)','text'],['sni','SNI / serverName','text'],['fp','TLS fingerprint','text'],['pbk','Reality publicKey','text'],['sid','Reality shortId','text'],['spx','Reality spiderX','text'],['path','Путь транспорта','text'],['host','Host транспорта','text'],['serviceName','gRPC serviceName','text']
+]){conn[key]=field(connectionGrid,label,type);conn[key].dataset.secret='true';conn[key].autocomplete='off'}
+conn.port.min=1;conn.port.max=65535;
+conn.network=select(connectionGrid,['tcp','raw','xhttp','ws','grpc'].map(x=>[x,x]),'Транспорт');
+conn.security=select(connectionGrid,['none','reality','tls'].map(x=>[x,x]),'Защита транспорта');
+conn.mode=select(connectionGrid,['auto','packet-up','stream-up','stream-one'].map(x=>[x,x]),'Режим XHTTP');
+conn.extra=secretArea(connectionFields,'XHTTP extra JSON (сохраняет XMUX и дополнительные настройки)');
+const editorProgress=el('p','operation-progress');editorProgress.setAttribute('role','status');connectionDialog.append(editorProgress);
+const connectionPassword=field(connectionDialog,'Пароль для управления подключениями','password');
+connectionDialog.append(el('p','tiny muted','Пароль нужен для чтения и изменения реквизитов. Они остаются на роутере, не сохраняются в браузере и очищаются при закрытии окна.'));
+const editorActions=el('div','editor-actions');connectionDialog.append(editorActions);
+const editorTest=button(editorActions,'Проверить соединение',async()=>{await connectionRequest('connection-test',{outbound:connectionPayload()});notice('Изолированная HTTPS-проверка пройдена.')});
+const editorSave=button(editorActions,'Проверить и сохранить сервер',async()=>{
+  if(!bankName.value.trim())throw new Error('Укажи название сервера.');
+  await connectionRequest('connection-save',{id:editingConnectionID,name:bankName.value.trim(),outbound:connectionPayload()});
+  closeConnectionEditor();await loadConnections();notice('Сервер сохранён. Для переключения нажми «Подключить» на его карточке.');
+},'primary');
+const advancedApply=el('details','advanced-apply');advancedApply.append(el('summary','','Применить без сохранения в список'));connectionDialog.append(advancedApply);
+button(advancedApply,'Применить как основное',async()=>{
+ cleanDraft();if(!confirm('Проверить и заменить основной сервер без сохранения копии в список? Соединения переподключатся.'))return;
+ await connectionRequest('connection-apply',{outbound:connectionPayload()});closeConnectionEditor();await loadConnections();await status();notice('Основное подключение изменено и проверено.');
+});
+document.body.append(connectionDialog);
+let editorPending=false;
+function syncEditorMode(){syncTransportFields();rawWrap.classList.toggle('hidden',editorMode.value!=='link');connectionFields.classList.toggle('hidden',editorMode.value!=='manual')}
+editorMode.onchange=syncEditorMode;
+function syncTransportFields(){
+ const network=conn.network.value,security=conn.security.value;
+ for(const key of ['sni','fp'])conn[key].parentElement.classList.toggle('hidden',security==='none');
+ for(const key of ['pbk','sid','spx'])conn[key].parentElement.classList.toggle('hidden',security!=='reality');
+ for(const key of ['path','host'])conn[key].parentElement.classList.toggle('hidden',!['xhttp','ws'].includes(network));
+ conn.serviceName.parentElement.classList.toggle('hidden',network!=='grpc');
+ for(const key of ['mode','extra'])conn[key].parentElement.classList.toggle('hidden',network!=='xhttp');
+}
+conn.network.onchange=syncTransportFields;conn.security.onchange=syncTransportFields;
+
+function closeConnectionEditor(){clearConnectionSecrets();connectionDialog.close();document.body.append(toastRegion)}
+editorClose.onclick=closeConnectionEditor;
+connectionDialog.addEventListener('cancel',event=>{if(editorPending)event.preventDefault();else clearConnectionSecrets()});
+connectionDialog.addEventListener('close',clearConnectionSecrets);
+function openConnectionEditor(item=null,out=null){
+ clearConnectionSecrets();editingConnectionID=item?.id || '';bankName.value=item?.name || '';
+ editorTitle.textContent=item?'Изменить сервер':'Новый сервер';
+ editorHelp.textContent=item?'Сохраняем изменения в этой копии. Работающий VPN изменится только после нажатия «Подключить» на карточке.':'Вставь ссылку и задай название. Проверим соединение перед сохранением. Подключение выполняется отдельно.';
+ editorMode.value='link';if(out)populateConnection(out);syncEditorMode();connectionDialog.showModal();
+}
 function populateConnection(out) {
   connectionBase = structuredClone(out);
   connectionRaw.value = JSON.stringify(out, null, 2);
@@ -45,6 +138,7 @@ function populateConnection(out) {
     host:transport.host || transport.headers?.Host, serviceName:st.grpcSettings?.serviceName,
     network:st.network || 'tcp', security:st.security || 'none', mode:st.xhttpSettings?.mode || 'auto',
     extra:JSON.stringify(st.xhttpSettings?.extra || {}, null, 2)})) conn[k].value = v ?? '';
+  syncTransportFields();
 }
 // Clone the imported outbound so unfamiliar fields (including TLS/transport
 // options) survive editing. Advanced JSON remains available for other protocols.
@@ -76,79 +170,54 @@ function connectionPayload() {
   if (st.network === 'grpc') (st.grpcSettings ||= {}).serviceName = conn.serviceName.value;
   return JSON.stringify(out);
 }
-async function connectionRequest(path, data = {}) {
-  const session = csrf;
-  try {
-    const result = await api(path, 'POST', {password:connectionPassword.value, ...data});
-    if (!session || csrf !== session) throw new Error('Сеанс изменился; войди заново.');
-    return result;
-  } finally { connectionPassword.value = '' }
+
+async function connectionRequest(path,data={}) {
+  if(editorPending)throw new Error('Проверка сервера ещё выполняется.');
+  editorPending=true;editorClose.disabled=true;editorProgress.textContent=path==='connection-parse'?'Разбираем параметры…':'Проверяем соединение… Дождись завершения.';
+  const controls=[...connectionDialog.querySelectorAll('input,textarea,select,button')];
+  const states=controls.map(n=>n.disabled);controls.forEach(n=>n.disabled=true);
+  try{return await postConnection(path,{password:connectionPassword.value,...data})}
+  finally {connectionPassword.value='';editorPending=false;editorProgress.textContent='';controls.forEach((n,i)=>n.disabled=states[i]);editorClose.disabled=false}
 }
-button(connectionBox, 'Импортировать ссылку / JSON в поля', async () => {
-  const d = await connectionRequest('connection-parse', {outbound:connectionRaw.value});
-  populateConnection(d.outbound); notice('Параметры импортированы. Рабочее подключение ещё не изменено.');
-});
-button(connectionBox, 'Загрузить параметры текущего подключения', async () => {
-  const d = await connectionRequest('connection-reveal', {id:'current'}); populateConnection(d.outbound);
-});
-button(connectionBox, 'Проверить новое подключение', async () => {
-  await connectionRequest('connection-test', {outbound:connectionPayload()}); notice('Изолированная HTTPS-проверка пройдена.');
-});
-button(connectionBox, 'Применить как основное', async () => {
-  cleanDraft();
-  if (!confirm('Проверить и заменить основной VPN-сервер? Текущие VPN-соединения переподключатся; при ошибке выполним откат.')) return;
-  await connectionRequest('connection-apply', {outbound:connectionPayload()});
-  clearConnectionSecrets(); notice('Основное подключение изменено и проверено.'); await loadConnections(); await status();
-}, 'primary');
-button(connectionBox, 'Скрыть параметры подключения', clearConnectionSecrets);
-const previousConnectionButton = button(connectionBox, 'Вернуть предыдущее подключение', async () => {
-  cleanDraft(); if (!confirm('Проверить и вернуть предыдущее подключение? VPN-соединения переподключатся.')) return;
-  await connectionRequest('connection-rollback'); clearConnectionSecrets(); await loadConnections(); await status(); notice('Предыдущее подключение восстановлено.');
-});
-connectionBox.append(el('p','tiny muted','Ключи сохраняются на роутере в файлах с правами 0600. В браузере они доступны после ввода пароля; очищаются при выходе. Панель работает по HTTP — используй её только в доверенной домашней сети.'));
-const bankBox = box($('settings-view').querySelector('.settings-grid'), 'Сохранённые серверы',
-  'До 20 именованных подключений. Сохранение проверяет соединение и создаёт копию; активный сервер меняется отдельной кнопкой. Удаление копии не выключает работающий VPN.');
-bankBox.classList.add('wide');
-const bankSelect = select(bankBox, [['','Новый сервер']], 'Сохранённое подключение');
-const bankName = field(bankBox, 'Название сервера'); bankName.maxLength = 60;
-button(bankBox, 'Загрузить выбранный сервер в поля', async () => {
-  if (!bankSelect.value) throw new Error('Выбери сохранённый сервер.');
-  populateConnection((await connectionRequest('connection-reveal',{id:bankSelect.value})).outbound);
-});
-button(bankBox, 'Сохранить параметры из полей', async () => {
-  if (bankSelect.value && !confirm('Заменить сохранённую копию? Рабочее подключение не изменится.')) return;
-  await connectionRequest('connection-save',{id:bankSelect.value,name:bankName.value,outbound:connectionPayload()});
-  notice('Проверенная копия подключения сохранена.'); await loadConnections();
-});
-button(bankBox, 'Переключиться на выбранный сервер', async () => {
-  cleanDraft(); if (!bankSelect.value) throw new Error('Выбери сохранённый сервер.');
-  if (!confirm('Проверить выбранный сервер и сделать его основным? VPN-соединения переподключатся.')) return;
-  await connectionRequest('connection-use',{id:bankSelect.value}); clearConnectionSecrets(); await loadConnections(); await status(); notice('Сервер переключён.');
-},'primary');
-button(bankBox, 'Удалить сохранённую копию', async () => {
-  if (!bankSelect.value) throw new Error('Выбери сохранённый сервер.');
-  if (!confirm('Удалить только сохранённую копию? Работающий сервер останется в конфигурации.')) return;
-  await connectionRequest('connection-delete',{id:bankSelect.value}); bankSelect.value = ''; bankName.value = ''; await loadConnections();
-},'danger');
-let bankItems = [];
-bankSelect.onchange = () => { bankName.value = bankItems.find(x=>x.id===bankSelect.value)?.name || '' };
-async function loadConnections() {
-  const session = csrf, d = await api('connections'); if (!session || session !== csrf) return;
-  const selected = bankSelect.value; bankItems = d.items || [];
-  bankSelect.replaceChildren();
-  for (const item of [{id:'',name:'Новый сервер'}, ...bankItems]) {
-    const o = el('option','',item.name + (item.active ? ' · активен' : item.primary ? ' · основной' : '')); o.value = item.id; bankSelect.append(o);
-  }
-  bankSelect.value = bankItems.some(x=>x.id===selected) ? selected : '';
-  previousConnectionButton.disabled = !d.rollback_available; previousConnectionButton.dataset.locked = String(previousConnectionButton.disabled);
-  facts(connectionFacts,[['Протокол',d.current?.protocol || 'Не определён'],['Транспорт',d.current?.transport || 'tcp'],['Защита',d.current?.security || 'none'],['Сохранено серверов',bankItems.length + ' / ' + (d.limit || 20)]]);
+function clearConnectionSecrets(){
+ connectionBase=null;editingConnectionID='';connectionRaw.value='';connectionPassword.value='';bankName.value='';
+ Object.values(conn).forEach(n=>{if(n.dataset.secret)n.value=''});
 }
-function clearConnectionSecrets() {
-  connectionBase = null; connectionRaw.value = ''; connectionPassword.value = '';
-  Object.values(conn).forEach(n=>{ if (n.dataset.secret) n.value = '' });
+async function loadConnections(){
+ const session=csrf,d=await api('connections');if(!session || session!==csrf)return;
+ bankItems=d.items || [];bankList.replaceChildren();
+ connectionBox.querySelector('p.muted').textContent=(d.profile?.active==='backup'?'Выбран резервный профиль. ':'Выбран основной профиль. ')+'Сохранение копии не меняет работающий VPN.';
+ facts(connectionFacts,[['Протокол',d.current?.protocol || 'Не определён'],['Транспорт',d.current?.transport || 'tcp'],['Защита',d.current?.security || 'none'],['Сохранено серверов',bankItems.length+' / '+(d.limit || 20)]]);
+ previousConnectionButton.disabled=!d.rollback_available;previousConnectionButton.dataset.locked=String(previousConnectionButton.disabled);
+ if(!bankItems.length)bankList.append(el('div','empty','Здесь будут твои серверы. Добавь новый по ссылке или сохрани текущее подключение.'));
+ for(const item of bankItems){
+  const card=el('article','server-card'+(item.active?' is-active':''));card.dataset.serverId=item.id;
+  const head=el('div','server-card-head'),name=el('h3','',item.name),badge=el('span','route-tag',item.active?'Подключён':item.primary?'Основной профиль':'Сохранён');head.append(name,badge);
+  card.append(head,el('p','muted server-meta',[item.protocol || 'VPN',item.transport || 'tcp',item.security || 'none'].join(' · ')),el('p','tiny muted','Сохранён: '+stamp(item.updated_at)));
+  const actions=el('div','server-actions');card.append(actions);
+  const connect=button(actions,item.active?'Уже подключён':'Подключить',async()=>{
+    cleanDraft();const done=await authorizeConnection('Подключить «'+item.name+'»','Проверим сервер и переключим основной VPN. Соединения переподключатся; при ошибке вернём прежний канал.','Проверить и подключить',{},data=>postConnection('connection-use',{...data,id:item.id}));
+    if(done){await loadConnections();await status();notice('Сервер «'+item.name+'» подключён.')}
+  },item.active?'secondary':'primary');connect.disabled=!!item.active;connect.dataset.locked=String(connect.disabled);
+  button(actions,'Изменить',async()=>{
+    const data=await authorizeConnection('Изменить «'+item.name+'»','Пароль нужен, чтобы открыть реквизиты этого сервера.','Открыть параметры',{},data=>postConnection('connection-reveal',{...data,id:item.id}));
+    if(data)openConnectionEditor(item,data.outbound);
+  });
+  button(actions,'Переименовать',async()=>{
+    const done=await authorizeConnection('Переименовать сервер','Меняется только название в списке. VPN не переподключится.','Сохранить название',{name:item.name},data=>postConnection('connection-rename',{...data,id:item.id}));
+    if(done){await loadConnections();notice('Название сервера сохранено.')}
+  });
+  button(actions,'Удалить',async()=>{
+    const done=await authorizeConnection('Удалить «'+item.name+'»?','Удалится только копия из списка. Работающее подключение останется в конфигурации роутера.','Удалить копию',{},data=>postConnection('connection-delete',{...data,id:item.id}));
+    if(done){await loadConnections();notice('Сохранённая копия удалена. Рабочее подключение не изменено.')}
+  },'danger');bankList.append(card);
+ }
 }
-const showLoginBeforeConnections = showLogin;
-showLogin = function() { clearConnectionSecrets(); activityRequest = null; activityAt = 0; activityBanner.classList.add('hidden'); showLoginBeforeConnections() };
+const showLoginBeforeConnections=showLogin;
+showLogin=function(){
+ if(connectionDialog.open)connectionDialog.close();if(authDialog.open)authDialog.close();
+ clearConnectionSecrets();clearToasts();activityRequest=null;activityAt=0;activityShown.clear();showLoginBeforeConnections();
+};
 async function loadDiagnosticDevices() {
   const session = csrf, d = await api('devices'); if (!session || session !== csrf) return;
   const n = $('diagnose-device'), selected = n.value;
@@ -162,15 +231,18 @@ const dailyBox = box($('stability-view'), 'Сводка за последние 
 const dailyFacts = output(dailyBox), dailyNote = el('p','tiny muted'); dailyBox.append(dailyNote);
 const activityBox = box($('stability-view'), 'Уведомления о связи', 'Последние события за сутки. Отметка прочитанного сохраняется только в этом браузере.');
 const activityList = output(activityBox);
-const activityBanner = el('div','notice hidden'); activityBanner.setAttribute('role','status');
-const activityBannerText = el('span'); activityBanner.append(activityBannerText);
-$('notice').before(activityBanner);
 let activityLatest = '', activityRead = '';
+const activityShown = new Set();
 try { activityRead = localStorage.getItem('darkls-notifications-read') || '' } catch {}
-button(activityBanner,'Прочитано',()=>{
-  activityRead = activityLatest; try { localStorage.setItem('darkls-notifications-read',activityRead) } catch {}
-  activityBanner.classList.add('hidden');
-});
+function showActivityToast(item) {
+  if (!item || item.id === activityRead || activityShown.has(item.id)) return;
+  activityShown.add(item.id);
+  if (activityShown.size > 100) activityShown.delete(activityShown.values().next().value);
+  toastMessage(item.message, {id:'vpn-'+item.id, title:'Состояние VPN', error:item.kind === 'vpn_error' || item.kind === 'update_error', persistent:true, onClose:()=>{
+    activityRead=item.id;
+    try { localStorage.setItem('darkls-notifications-read',item.id) } catch {}
+  }});
+}
 let activityAt = 0, activityRequest = null;
 function duration(seconds) { const n = Math.max(0,Number(seconds)||0); return Math.floor(n/3600)+' ч '+Math.floor(n%3600/60)+' мин '+Math.floor(n%60)+' с' }
 function loadActivity(force = false) {
@@ -186,8 +258,7 @@ function loadActivity(force = false) {
     for (const item of d.notifications || []) activityList.append(el('p','',stamp(item.at)+' · '+item.message));
     if (!d.notifications?.length) activityList.append(el('p','muted','Событий за сутки нет.'));
     const newest = d.notifications?.[0]; activityLatest = newest?.id || '';
-    activityBannerText.textContent = newest ? stamp(newest.at)+' · '+newest.message+' ' : '';
-    activityBanner.classList.toggle('hidden',!newest || activityLatest === activityRead);
+    showActivityToast(newest);
   })();
   activityRequest = pending.finally(()=>{ if (activityRequest === tracked) activityRequest = null });
   const tracked = activityRequest; return tracked;

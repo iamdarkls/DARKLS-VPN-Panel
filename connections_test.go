@@ -182,3 +182,38 @@ func TestConnectionsAPIRequiresLogin(t *testing.T) {
 		}
 	}
 }
+
+func TestRenameConnectionOnlyChangesMetadata(t *testing.T) {
+	s, runner := fixture(t)
+	cfg := configFixture(t, s)
+	out := exampleOutbound(t, "private.example")
+	if e := s.saveConnection("", "Old", out); e != nil {
+		t.Fatal(e)
+	}
+	list, _ := s.connections()
+	cookie, csrf := loginTest(t, s)
+	runner.mu.Lock()
+	runner.calls = nil
+	runner.mu.Unlock()
+	w := request(s, "POST", "/api/connection-rename", `{"password":"old-password-123","id":"`+list[0].ID+`","name":"New"}`, cookie, csrf, "http://"+s.host, s.host)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	next, _ := s.connections()
+	after, _ := s.readVPNConfig()
+	if next[0].Name != "New" || outboundHash(next[0].Outbound) != outboundHash(out) || outboundHash(after) != outboundHash(cfg) {
+		t.Fatal("rename changed credentials/config")
+	}
+	runner.mu.Lock()
+	calls := strings.Join(runner.calls, "\n")
+	runner.mu.Unlock()
+	if strings.Contains(calls, "xray") || strings.Contains(calls, "vpn.sh") {
+		t.Fatal("rename restarted/probed VPN", calls)
+	}
+	if e := s.renameConnection(list[0].ID, "vless://secret"); e == nil {
+		t.Fatal("link allowed in name")
+	}
+	if e := s.renameConnection("missing", "New"); e == nil {
+		t.Fatal("unknown ID accepted")
+	}
+}

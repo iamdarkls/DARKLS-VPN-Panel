@@ -34,7 +34,7 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.5.0"
+var version = "1.6.0"
 
 type Auth struct {
 	User string `json:"user"`
@@ -188,7 +188,7 @@ func (s *Server) handler() http.Handler {
 				w.WriteHeader(405)
 				return
 			}
-			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" && r.URL.Path != "/advanced.js" && r.URL.Path != "/core.js" && r.URL.Path != "/manage.js" {
+			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" && r.URL.Path != "/advanced.js" && r.URL.Path != "/core.js" && r.URL.Path != "/manage.js" && r.URL.Path != "/notifications.js" {
 				http.NotFound(w, r)
 				return
 			}

@@ -24,6 +24,7 @@ const categories = {
   custom: 'Мои группы'
 };
 const titles = {
+  servers: ['VPN-серверы', 'Подключения, сохранённые серверы и безопасное переключение.'],
   stability: ['Связь и восстановление', 'Причина сбоя, история и безопасные сравнения.'],
   sites: ['Сайты и сервисы', 'Выбирай, что открывать через твой VPN.'],
   devices: ['Устройства', 'Определи, какие устройства используют выбранные маршруты.'],
@@ -97,9 +98,10 @@ function showLogin() {
 }
 
 function notice(text, error = false) {
-  $('notice').textContent = text;
-  $('notice').classList.toggle('error', error);
-  $('notice').classList.toggle('hidden', !text)
+  $('notice').classList.add('hidden');
+  if (!text) return;
+  if (typeof toastMessage === 'function') toastMessage(text, {error});
+  else (window.pendingToasts ||= []).push({text,error})
 }
 
 function dirty() {
@@ -108,6 +110,7 @@ function dirty() {
 
 function updateSavebar() {
   const changed = dirty();
+  $('savebar').classList.toggle('has-changes', changed || busy);
   $('apply').disabled = !changed || busy;
   $('discard').disabled = !changed || busy;
   $('save-title').textContent = busy ? 'Выполняем операцию…' : changed ? 'Есть несохранённые изменения' :
@@ -506,6 +509,7 @@ async function refreshView() {
   if (viewBusy) return;
   viewBusy = true;
   try {
+    if (currentView === 'servers') await loadConnections();
     if (currentView === 'devices') await loadDevices();
     if (currentView === 'metrics') await loadMetrics();
     if (currentView === 'logs') await loadLogs();
@@ -513,8 +517,7 @@ async function refreshView() {
     if (currentView === 'settings') {
       await loadGitHub();
       await loadAdvancedSettings();
-      await loadCore();
-      await loadConnections()
+      await loadCore()
     }
     if (currentView === 'stability') { await loadServiceHistory(); await loadActivity(true) }
     if (currentView === 'diagnostics') await loadDiagnosticDevices();
