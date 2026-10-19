@@ -26,7 +26,7 @@ func parseVLESSLink(raw string) (map[string]any, error) {
 	if err != nil {
 		return nil, errors.New("неверное кодирование параметров VLESS")
 	}
-	allowed := strings.Fields("type security encryption flow fp sni pbk sid spx extra mode path host serviceName alpn allowInsecure x_padding_bytes support-x25519mlkem768 headerType")
+	allowed := strings.Fields("type security encryption flow fp sni pbk sid spx extra mode path host serviceName authority multiMode alpn allowInsecure x_padding_bytes support-x25519mlkem768 headerType")
 	known := map[string]bool{}
 	for _, k := range allowed {
 		known[k] = true
@@ -78,7 +78,9 @@ func parseVLESSLink(raw string) (map[string]any, error) {
 			if e != nil {
 				return nil, errors.New("неверный allowInsecure")
 			}
-			m["allowInsecure"] = v
+			if v {
+				m["allowInsecure"] = true
+			}
 		}
 		stream["tlsSettings"] = m
 	default:
@@ -108,12 +110,23 @@ func parseVLESSLink(raw string) (map[string]any, error) {
 	case "grpc":
 		g := map[string]any{}
 		set(g, "serviceName", "serviceName")
-		if mode := q.Get("mode"); mode != "" && mode != "gun" {
-			if mode != "multi" {
-				return nil, errors.New("неподдерживаемый режим gRPC")
-			}
-			g["multiMode"] = true
+		set(g, "authority", "authority")
+		mode := q.Get("mode")
+		if mode != "" && mode != "gun" && mode != "multi" {
+			return nil, errors.New("режим gRPC: gun или multi")
 		}
+		multi := mode == "multi"
+		if raw := q.Get("multiMode"); raw != "" {
+			v, e := strconv.ParseBool(raw)
+			if e != nil {
+				return nil, errors.New("неверный multiMode gRPC")
+			}
+			if mode != "" && v != multi {
+				return nil, errors.New("mode и multiMode задают разные режимы gRPC")
+			}
+			multi = v
+		}
+		g["multiMode"] = multi
 		stream["grpcSettings"] = g
 	case "ws":
 		stream["wsSettings"] = map[string]any{"path": q.Get("path"), "headers": map[string]any{"Host": q.Get("host")}}

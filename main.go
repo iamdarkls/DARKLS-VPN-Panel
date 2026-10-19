@@ -34,7 +34,7 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.6.0"
+var version = "1.6.1"
 
 type Auth struct {
 	User string `json:"user"`

@@ -38,7 +38,7 @@ async function postConnection(path,data) {
   return result;
 }
 function authorizeConnection(title,description,label,options,perform) {
-  if(authDialog.open) throw new Error('Сначала заверши открытое действие.');
+  if(authDialog.open || authForm.onsubmit) throw new Error('Сначала заверши открытое действие.');
   authTitle.textContent=title;authDescription.textContent=description;authSubmit.textContent=label;
   authName.parentElement.classList.toggle('hidden',options.name===undefined);
   authName.value=options.name || '';authPassword.value='';authName.required=options.name!==undefined;
@@ -80,12 +80,14 @@ const connectionFields=el('div','connection-fields hidden');connectionDialog.app
 const connectionGrid=el('div','settings-grid');connectionFields.append(connectionGrid);
 const conn={};
 for(const [key,label,type] of [
- ['address','Адрес сервера','text'],['port','Порт сервера','number'],['id','UUID VLESS','text'],['encryption','Encryption','text'],['flow','Flow (можно оставить пустым)','text'],['sni','SNI / serverName','text'],['fp','TLS fingerprint','text'],['pbk','Reality publicKey','text'],['sid','Reality shortId','text'],['spx','Reality spiderX','text'],['path','Путь транспорта','text'],['host','Host транспорта','text'],['serviceName','gRPC serviceName','text']
+ ['address','Адрес сервера','text'],['port','Порт сервера','number'],['id','UUID VLESS','text'],['encryption','Encryption','text'],['flow','Flow (можно оставить пустым)','text'],['sni','SNI / serverName','text'],['fp','TLS fingerprint','text'],['pbk','Reality publicKey','text'],['sid','Reality shortId','text'],['spx','Reality spiderX','text'],['path','Путь транспорта','text'],['host','Host транспорта','text'],['serviceName','gRPC serviceName','text'],['authority','gRPC authority (необязательно)','text'],['alpn','TLS ALPN (через запятую)','text']
 ]){conn[key]=field(connectionGrid,label,type);conn[key].dataset.secret='true';conn[key].autocomplete='off'}
 conn.port.min=1;conn.port.max=65535;
 conn.network=select(connectionGrid,['tcp','raw','xhttp','ws','grpc'].map(x=>[x,x]),'Транспорт');
 conn.security=select(connectionGrid,['none','reality','tls'].map(x=>[x,x]),'Защита транспорта');
 conn.mode=select(connectionGrid,['auto','packet-up','stream-up','stream-one'].map(x=>[x,x]),'Режим XHTTP');
+conn.grpcMode=select(connectionGrid,[['gun','Gun — обычный'],['multi','Multi — многопоточный']],'Режим gRPC');
+const grpcHint=el('p','tiny muted','serviceName и режим должны совпадать с сервером. Authority задаётся отдельно от SNI; для gRPC через TLS нужен HTTP/2 (h2).');connectionFields.append(grpcHint);
 conn.extra=secretArea(connectionFields,'XHTTP extra JSON (сохраняет XMUX и дополнительные настройки)');
 const editorProgress=el('p','operation-progress');editorProgress.setAttribute('role','status');connectionDialog.append(editorProgress);
 const connectionPassword=field(connectionDialog,'Пароль для управления подключениями','password');
@@ -111,7 +113,9 @@ function syncTransportFields(){
  for(const key of ['sni','fp'])conn[key].parentElement.classList.toggle('hidden',security==='none');
  for(const key of ['pbk','sid','spx'])conn[key].parentElement.classList.toggle('hidden',security!=='reality');
  for(const key of ['path','host'])conn[key].parentElement.classList.toggle('hidden',!['xhttp','ws'].includes(network));
- conn.serviceName.parentElement.classList.toggle('hidden',network!=='grpc');
+ for(const key of ['serviceName','authority','grpcMode'])conn[key].parentElement.classList.toggle('hidden',network!=='grpc');
+ grpcHint.classList.toggle('hidden',network!=='grpc');
+ conn.alpn.parentElement.classList.toggle('hidden',security!=='tls');
  for(const key of ['mode','extra'])conn[key].parentElement.classList.toggle('hidden',network!=='xhttp');
 }
 conn.network.onchange=syncTransportFields;conn.security.onchange=syncTransportFields;
@@ -119,7 +123,7 @@ conn.network.onchange=syncTransportFields;conn.security.onchange=syncTransportFi
 function closeConnectionEditor(){clearConnectionSecrets();connectionDialog.close();document.body.append(toastRegion)}
 editorClose.onclick=closeConnectionEditor;
 connectionDialog.addEventListener('cancel',event=>{if(editorPending)event.preventDefault();else clearConnectionSecrets()});
-connectionDialog.addEventListener('close',clearConnectionSecrets);
+connectionDialog.addEventListener('close',()=>{if(!connectionDialog.open)clearConnectionSecrets()});
 function openConnectionEditor(item=null,out=null){
  clearConnectionSecrets();editingConnectionID=item?.id || '';bankName.value=item?.name || '';
  editorTitle.textContent=item?'Изменить сервер':'Новый сервер';
@@ -136,6 +140,7 @@ function populateConnection(out) {
     encryption:user.encryption || 'none', flow:user.flow, sni:tls.serverName, fp:tls.fingerprint,
     pbk:tls.publicKey, sid:tls.shortId, spx:tls.spiderX, path:transport.path,
     host:transport.host || transport.headers?.Host, serviceName:st.grpcSettings?.serviceName,
+    authority:st.grpcSettings?.authority, grpcMode:st.grpcSettings?.multiMode === true ? 'multi' : 'gun', alpn:(Array.isArray(st.tlsSettings?.alpn) ? st.tlsSettings.alpn : []).join(','),
     network:st.network || 'tcp', security:st.security || 'none', mode:st.xhttpSettings?.mode || 'auto',
     extra:JSON.stringify(st.xhttpSettings?.extra || {}, null, 2)})) conn[k].value = v ?? '';
   syncTransportFields();
@@ -158,6 +163,7 @@ function connectionPayload() {
   if (st.security !== 'none') {
     const key = st.security === 'reality' ? 'realitySettings' : 'tlsSettings'; const tls = st[key] ||= {};
     tls.serverName = conn.sni.value.trim(); tls.fingerprint = conn.fp.value.trim();
+    if (st.security === 'tls') { const alpn=conn.alpn.value.split(',').map(x=>x.trim()).filter(Boolean);if(alpn.length)tls.alpn=alpn;else delete tls.alpn }
     if (st.security === 'reality') Object.assign(tls,{publicKey:conn.pbk.value.trim(),shortId:conn.sid.value.trim(),spiderX:conn.spx.value.trim()});
   }
   if (st.network === 'xhttp') {
@@ -167,12 +173,13 @@ function connectionPayload() {
     Object.assign(st.xhttpSettings ||= {}, {path:conn.path.value, host:conn.host.value, mode:conn.mode.value, extra});
   }
   if (st.network === 'ws') { const ws = st.wsSettings ||= {}; ws.path = conn.path.value; (ws.headers ||= {}).Host = conn.host.value; }
-  if (st.network === 'grpc') (st.grpcSettings ||= {}).serviceName = conn.serviceName.value;
+  if (st.network === 'grpc') Object.assign(st.grpcSettings ||= {}, {serviceName:conn.serviceName.value,authority:conn.authority.value,multiMode:conn.grpcMode.value==='multi'});
   return JSON.stringify(out);
 }
 
 async function connectionRequest(path,data={}) {
   if(editorPending)throw new Error('Проверка сервера ещё выполняется.');
+  if(!connectionPassword.value)throw new Error('Введи пароль панели для проверки или сохранения сервера.');
   editorPending=true;editorClose.disabled=true;editorProgress.textContent=path==='connection-parse'?'Разбираем параметры…':'Проверяем соединение… Дождись завершения.';
   const controls=[...connectionDialog.querySelectorAll('input,textarea,select,button')];
   const states=controls.map(n=>n.disabled);controls.forEach(n=>n.disabled=true);

@@ -169,8 +169,9 @@ func (s *Server) candidate(ctx context.Context, cfg map[string]any, port int, ru
 	}
 	f.Close()
 	bin := filepath.Join(s.root, "xray")
-	if _, e = s.run(bin, "run", "-test", "-config", path); e != nil {
-		return errors.New("конфигурация не прошла проверку Xray")
+	validation, e := s.run(bin, "run", "-test", "-config", path)
+	if e != nil {
+		return connectionConfigError(validation)
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
@@ -426,4 +427,14 @@ func (s *Server) recoverProfileSwitch() error {
 		}
 	}
 	return os.Remove(path)
+}
+
+// The candidate can contain credentials not yet in persisted scrub sources.
+// Return a known static migration hint, never the raw Xray validation output.
+func connectionConfigError(output []byte) error {
+	text := strings.ToLower(string(output))
+	if strings.Contains(text, "allowinsecure") && strings.Contains(text, "removed") {
+		return errors.New("эта версия Xray больше не поддерживает allowInsecure. Нужны корректные SNI и сертификат либо привязка сертификата в outbound JSON; проверка сертификата не отключается автоматически")
+	}
+	return errors.New("конфигурация не прошла проверку Xray; проверьте параметры транспорта и безопасности")
 }

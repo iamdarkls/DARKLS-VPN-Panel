@@ -229,7 +229,7 @@ func (s *Server) commitPrimary(out map[string]any, restart, probe func() error) 
 }
 func (s *Server) activateConnection(ctx context.Context, out map[string]any) error {
 	if e := s.testOutbound(ctx, out); e != nil {
-		return errors.New("новое подключение не прошло изолированную HTTPS-проверку; рабочее подключение сохранено")
+		return errors.New("Рабочее подключение сохранено. Проверка нового сервера: " + e.Error())
 	}
 	cfg, e := s.readVPNConfig()
 	if e != nil {
@@ -253,8 +253,9 @@ func (s *Server) activateConnection(ctx context.Context, out map[string]any) err
 	if e != nil {
 		return e
 	}
-	if _, e = s.runner.Run(ctx, filepath.Join(s.root, "xray"), "run", "-test", "-config", path); e != nil {
-		return errors.New("полная конфигурация Xray не прошла проверку")
+	validation, e := s.runner.Run(ctx, filepath.Join(s.root, "xray"), "run", "-test", "-config", path)
+	if e != nil {
+		return connectionConfigError(validation)
 	}
 	return s.commitPrimary(out, s.restartMainXray, func() error {
 		started := time.Now()
@@ -386,7 +387,7 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 	}
 	if e != nil {
-		fail(w, 400, errors.New("параметры подключения не распознаны; проверьте ссылку или outbound JSON"))
+		fail(w, 400, errors.New("Параметры подключения: "+s.scrub(e.Error())))
 		return true
 	}
 	if path == "connection-parse" {
@@ -410,7 +411,7 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 		e = s.activateConnection(ctx, out)
 	} else {
 		if e = s.testOutbound(ctx, out); e != nil {
-			e = errors.New("изолированная HTTPS-проверка не пройдена; изменения не сохранены")
+			e = errors.New("Изменения не сохранены. Проверка нового сервера: " + e.Error())
 		} else if path == "connection-save" || path == "connection-snapshot" {
 			id := req.ID
 			if path == "connection-snapshot" {
