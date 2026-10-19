@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,48 +95,11 @@ func parseBackup(raw string) (map[string]any, error) {
 	raw = strings.TrimSpace(raw)
 	var out map[string]any
 	if strings.HasPrefix(raw, "vless://") {
-		u, e := url.Parse(raw)
-		if e != nil || u.User == nil || u.Hostname() == "" {
-			return nil, errors.New("неверная ссылка VLESS")
+		var e error
+		out, e = parseVLESSLink(raw)
+		if e != nil {
+			return nil, e
 		}
-		port, e := strconv.Atoi(u.Port())
-		if e != nil || port < 1 || port > 65535 {
-			return nil, errors.New("неверный порт")
-		}
-		q := u.Query()
-		stream := map[string]any{"network": q.Get("type"), "security": q.Get("security")}
-		if stream["network"] == "" {
-			stream["network"] = "tcp"
-		}
-		if stream["security"] == "reality" {
-			stream["realitySettings"] = map[string]any{"serverName": q.Get("sni"), "fingerprint": q.Get("fp"), "publicKey": q.Get("pbk"), "shortId": q.Get("sid"), "spiderX": q.Get("spx")}
-		} else if stream["security"] == "tls" {
-			stream["tlsSettings"] = map[string]any{"serverName": q.Get("sni"), "fingerprint": q.Get("fp")}
-		}
-		switch stream["network"] {
-		case "xhttp":
-			x := map[string]any{"path": q.Get("path"), "mode": q.Get("mode")}
-			if q.Get("host") != "" {
-				x["host"] = q.Get("host")
-			}
-			if q.Get("extra") != "" {
-				var extra map[string]any
-				if json.Unmarshal([]byte(q.Get("extra")), &extra) != nil {
-					return nil, errors.New("неверный extra")
-				}
-				x["extra"] = extra
-			}
-			stream["xhttpSettings"] = x
-		case "grpc":
-			stream["grpcSettings"] = map[string]any{"serviceName": q.Get("serviceName")}
-		case "ws":
-			stream["wsSettings"] = map[string]any{"path": q.Get("path"), "headers": map[string]any{"Host": q.Get("host")}}
-		}
-		user := map[string]any{"id": u.User.Username(), "encryption": "none"}
-		if q.Get("flow") != "" {
-			user["flow"] = q.Get("flow")
-		}
-		out = map[string]any{"tag": "vpn", "protocol": "vless", "settings": map[string]any{"vnext": []any{map[string]any{"address": u.Hostname(), "port": port, "users": []any{user}}}}, "streamSettings": stream}
 	} else if json.Unmarshal([]byte(raw), &out) != nil {
 		return nil, errors.New("вставь VLESS-ссылку или один outbound JSON")
 	}
@@ -213,13 +176,10 @@ func (s *Server) candidate(ctx context.Context, cfg map[string]any, port int, ru
 	defer cancel()
 	cmd := exec.CommandContext(probeCtx, bin, "run", "-config", path)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	logFile, e := os.OpenFile("/tmp/darkls-candidate.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if e != nil {
-		return e
-	}
-	defer logFile.Close()
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	// New credentials are not yet part of persisted scrub sources. Discard the
+	// candidate's output instead of risking secrets in a shared diagnostic log.
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
 	if e = cmd.Start(); e != nil {
 		return e
 	}
@@ -355,13 +315,34 @@ func (s *Server) failover() error {
 }
 
 type profileJournal struct {
-	Config json.RawMessage `json:"previous_config"`
-	Active json.RawMessage `json:"previous_active,omitempty"`
+	Backup          json.RawMessage `json:"previous_backup,omitempty"`
+	PrimaryCaptured bool            `json:"primary_captured,omitempty"`
+	Primary         json.RawMessage `json:"previous_primary,omitempty"`
+	Config          json.RawMessage `json:"previous_config"`
+	Active          json.RawMessage `json:"previous_active,omitempty"`
 }
 
 func (s *Server) writeProfileJournal(config []byte) error {
-	active, _ := os.ReadFile(filepath.Join(s.dir, "active-profile.json"))
-	return atomicWrite(filepath.Join(s.dir, "profile-switch-journal.json"), jsonBytes(profileJournal{Config: config, Active: active}))
+	optional := func(path string) ([]byte, error) {
+		b, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return b, err
+	}
+	active, e := optional(filepath.Join(s.dir, "active-profile.json"))
+	if e != nil {
+		return e
+	}
+	primary, e := optional(s.profilePath("primary"))
+	if e != nil {
+		return e
+	}
+	backup, e := optional(s.profilePath("backup"))
+	if e != nil {
+		return e
+	}
+	return atomicWrite(filepath.Join(s.dir, "profile-switch-journal.json"), jsonBytes(profileJournal{Config: config, Active: active, PrimaryCaptured: true, Primary: primary, Backup: backup}))
 }
 func (s *Server) restoreProfileFiles() error {
 	path := filepath.Join(s.dir, "profile-switch-journal.json")
@@ -396,6 +377,22 @@ func (s *Server) restoreProfileFiles() error {
 		}
 	} else {
 		_ = os.Remove(activePath)
+	}
+	if j.PrimaryCaptured {
+		for name, data := range map[string]json.RawMessage{"primary": j.Primary, "backup": j.Backup} {
+			if len(data) > 0 {
+				e = atomicWrite(s.profilePath(name), data)
+			} else {
+				e = os.Remove(s.profilePath(name))
+				if os.IsNotExist(e) {
+					e = nil
+				}
+			}
+			if e != nil {
+				return e
+			}
+		}
+		return nil
 	}
 	if _, e = os.Stat(s.profilePath(name)); e == nil {
 		out, e := vpnOutbound(cfg)

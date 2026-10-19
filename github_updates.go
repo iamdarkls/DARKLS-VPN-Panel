@@ -62,11 +62,12 @@ type ghAsset struct {
 	Digest string `json:"digest"`
 }
 type ghRelease struct {
-	Tag        string    `json:"tag_name"`
-	Draft      bool      `json:"draft"`
-	Prerelease bool      `json:"prerelease"`
-	Body       string    `json:"body"`
-	Assets     []ghAsset `json:"assets"`
+	PublishedAt string    `json:"published_at"`
+	Tag         string    `json:"tag_name"`
+	Draft       bool      `json:"draft"`
+	Prerelease  bool      `json:"prerelease"`
+	Body        string    `json:"body"`
+	Assets      []ghAsset `json:"assets"`
 }
 
 func trustedReleaseKey() ed25519.PublicKey {

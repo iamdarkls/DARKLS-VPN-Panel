@@ -28,6 +28,7 @@ var coreVersionLine = regexp.MustCompile(`^Xray (\d{1,4}\.\d{1,4}\.\d{1,4}) `)
 var coreChecksumLine = regexp.MustCompile(`(?im)^SHA(?:2-)?256\s*(?:\([^\r\n]*\))?\s*[:=]\s*([a-f0-9]{64})\s*$`)
 
 type CoreSettings struct {
+	DelayDays   int              `json:"delay_days"`
 	Check       bool             `json:"check"`
 	AutoInstall bool             `json:"auto_install"`
 	Hour        int              `json:"hour_msk"`
@@ -35,22 +36,24 @@ type CoreSettings struct {
 	Blocked     map[string]int64 `json:"blocked_versions"`
 }
 type CoreStatus struct {
-	Current    string `json:"current"`
-	Latest     string `json:"latest,omitempty"`
-	CheckedAt  int64  `json:"checked_at"`
-	Available  bool   `json:"available"`
-	Prerelease bool   `json:"prerelease"`
-	Notes      string `json:"notes,omitempty"`
-	URL        string `json:"url"`
-	Error      string `json:"error,omitempty"`
+	PublishedAt int64  `json:"published_at"`
+	Current     string `json:"current"`
+	Latest      string `json:"latest,omitempty"`
+	CheckedAt   int64  `json:"checked_at"`
+	Available   bool   `json:"available"`
+	Prerelease  bool   `json:"prerelease"`
+	Notes       string `json:"notes,omitempty"`
+	URL         string `json:"url"`
+	Error       string `json:"error,omitempty"`
 }
 type CoreRelease struct {
-	Prerelease bool
-	Version    string
-	URL        string
-	Size       int64
-	Hash       string
-	Notes      string
+	PublishedAt int64
+	Prerelease  bool
+	Version     string
+	URL         string
+	Size        int64
+	Hash        string
+	Notes       string
 }
 type CoreJob struct {
 	ID       string `json:"id"`
@@ -63,7 +66,7 @@ type CoreJob struct {
 }
 
 func (s *Server) coreSettings() CoreSettings {
-	p := CoreSettings{Check: true, Hour: 4, Blocked: map[string]int64{}}
+	p := CoreSettings{Check: true, Hour: 4, DelayDays: 3, Blocked: map[string]int64{}}
 	_ = readJSON(s.corePath("xray-settings.json"), &p)
 	if p.Blocked == nil {
 		p.Blocked = map[string]int64{}
@@ -186,7 +189,12 @@ func fetchCoreReleaseStream(ctx context.Context, read func(context.Context, stri
 	if len(notes) > 8192 {
 		notes = notes[:8192]
 	}
-	return CoreRelease{Version: strings.TrimPrefix(rel.Tag, "v"), URL: asset.URL, Size: asset.Size, Hash: hash, Notes: notes, Prerelease: rel.Prerelease}, nil
+	published, _ := time.Parse(time.RFC3339, rel.PublishedAt)
+	var at int64
+	if !published.IsZero() {
+		at = published.Unix()
+	}
+	return CoreRelease{PublishedAt: at, Version: strings.TrimPrefix(rel.Tag, "v"), URL: asset.URL, Size: asset.Size, Hash: hash, Notes: notes, Prerelease: rel.Prerelease}, nil
 }
 func (s *Server) coreStatus() CoreStatus {
 	var st CoreStatus
@@ -206,6 +214,7 @@ func (s *Server) checkCore(ctx context.Context) (CoreStatus, CoreRelease, error)
 	if e != nil {
 		st.Error = s.scrub(e.Error())
 	} else {
+		st.PublishedAt = rel.PublishedAt
 		st.Latest = rel.Version
 		st.Prerelease = rel.Prerelease
 		st.Available = newerRelease(rel.Version, st.Current)
@@ -497,7 +506,7 @@ func (s *Server) coreAPI(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if path == "xray-settings" {
-		if req.Settings == nil || req.Settings.Hour < 0 || req.Settings.Hour > 23 || req.Settings.AutoInstall && !req.Settings.Check {
+		if req.Settings == nil || req.Settings.Hour < 0 || req.Settings.Hour > 23 || req.Settings.DelayDays < 0 || req.Settings.DelayDays > 30 || req.Settings.AutoInstall && !req.Settings.Check {
 			fail(w, 400, errors.New("укажите час 0–23 МСК; автоустановка требует проверки обновлений"))
 			return true
 		}
@@ -505,6 +514,7 @@ func (s *Server) coreAPI(w http.ResponseWriter, r *http.Request) bool {
 		p.Check = req.Settings.Check
 		p.AutoInstall = req.Settings.AutoInstall
 		p.Hour = req.Settings.Hour
+		p.DelayDays = req.Settings.DelayDays
 		if e := atomicWrite(s.corePath("xray-settings.json"), jsonBytes(p)); e != nil {
 			fail(w, 500, e)
 		} else {
@@ -536,9 +546,18 @@ func (s *Server) coreAPI(w http.ResponseWriter, r *http.Request) bool {
 	respond(w, 202, map[string]any{"job": s.launchCoreJob(req.Version, rollback, req.Retry)})
 	return true
 }
+
+// Missing or future publication time cannot satisfy a nonzero deferral.
+// Manual installation is intentionally independent of this automatic schedule.
+func coreReleaseMature(p CoreSettings, st CoreStatus, now time.Time) bool {
+	if p.DelayDays == 0 {
+		return true
+	}
+	return p.DelayDays > 0 && p.DelayDays <= 30 && st.PublishedAt > 0 && st.PublishedAt <= now.Unix() && now.Sub(time.Unix(st.PublishedAt, 0)) >= time.Duration(p.DelayDays)*24*time.Hour
+}
 func autoCoreDue(p CoreSettings, st CoreStatus, now time.Time, healthy bool) bool {
 	day := now.In(time.FixedZone("MSK", 3*3600))
-	return p.Check && p.AutoInstall && now.Year() >= 2025 && day.Hour() == p.Hour && day.Format("2006-01-02") != p.LastAutoDay && st.Available && p.Blocked[st.Latest] == 0 && healthy
+	return coreReleaseMature(p, st, now) && st.Error == "" && p.Check && p.AutoInstall && now.Year() >= 2025 && day.Hour() == p.Hour && day.Format("2006-01-02") != p.LastAutoDay && st.Available && p.Blocked[st.Latest] == 0 && healthy
 }
 func (s *Server) coreLoop(ctx context.Context) {
 	j := s.coreJob()

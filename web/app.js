@@ -443,13 +443,15 @@ $('diagnose-form').onsubmit = event => {
   event.preventDefault();
   action(event.target.querySelector('button'), async () => {
     const d = await api('diagnose', 'POST', {
-      domain: $('diagnose-domain').value
+      domain: $('diagnose-domain').value,
+      device_mac: $('diagnose-device').value
     });
     $('diagnose-result').replaceChildren();
     const box = el('div', 'facts');
     facts(box, [
       ['Домен', d.domain],
-      ['Это устройство', d.client_ip],
+      ['Устройство', (d.device?.name ? d.device.name + ' · ' : '') + d.client_ip],
+      ['Выбор и IP-набор', d.policy_mismatch ? 'Расходятся: дождитесь синхронизации устройств' : 'Согласованы'],
       ['Разрешено режимом устройств', d.device_eligible ? 'Да' : 'Нет'],
       ['Правила роутера', d.routes_active ? 'Подключены' : 'Не подключены'],
       ['Группы', d.groups.map(g => g.name + (g.enabled ? ' · вкл.' : ' · выкл.')).join(', ') ||
@@ -459,7 +461,7 @@ $('diagnose-form').onsubmit = event => {
     $('diagnose-result').append(box);
     for (const a of d.addresses) $('diagnose-result').append(el('p', 'route-result', a.ip + ' → ' + (a
         .via_vpn ? 'По правилам должен идти через VPN' : 'По проверенным правилам VPN не выбран'
-        ) + (a.in_vpn_set ? ' · IP есть в VPN-наборе' : '')));
+        ) + (a.reason ? ' · ' + a.reason : '')));
   })
 };
 async function loadBackups() {
@@ -511,9 +513,11 @@ async function refreshView() {
     if (currentView === 'settings') {
       await loadGitHub();
       await loadAdvancedSettings();
-      await loadCore()
+      await loadCore();
+      await loadConnections()
     }
-    if (currentView === 'stability') await loadServiceHistory();
+    if (currentView === 'stability') { await loadServiceHistory(); await loadActivity(true) }
+    if (currentView === 'diagnostics') await loadDiagnosticDevices();
     if (currentView === 'backups') await loadStorage()
   } catch (e) {
     notice(e.message, true)

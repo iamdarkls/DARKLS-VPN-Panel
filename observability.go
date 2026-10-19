@@ -62,6 +62,7 @@ func recordProbe(err error, d time.Duration) {
 	defer release()
 	p := readProbeState()
 	wasOK := p.OK
+	hadSample := p.CheckedAt > 0
 	p.CheckedAt = time.Now().Unix()
 	p.OK = err == nil
 	p.DurationMS = d.Milliseconds()
@@ -69,7 +70,7 @@ func recordProbe(err error, d time.Duration) {
 	if err == nil {
 		p.LastSuccess = p.CheckedAt
 		p.Failures = 0
-		if !wasOK {
+		if !wasOK && hadSample {
 			appendEvent("vpn", "HTTPS через VPN восстановлен")
 		}
 	} else {
@@ -79,6 +80,9 @@ func recordProbe(err error, d time.Duration) {
 		appendEvent("vpn_error", p.Error)
 	}
 	_ = atomicWrite(probeStatePath, jsonBytes(p))
+	if time.Now().Year() >= 2025 {
+		appendHistory(probeHistoryPath, ProbeSample{At: p.CheckedAt, Kind: "probe", OK: p.OK, MS: p.DurationMS})
+	}
 }
 func recordRecovery(reason string) {
 	release, e := tmpLock("/tmp/darkls-probe-state.lock")
@@ -91,6 +95,9 @@ func recordRecovery(reason string) {
 	p.LastRecovery = time.Now().Unix()
 	p.RecoveryReason = redact(reason)
 	_ = atomicWrite(probeStatePath, jsonBytes(p))
+	if time.Now().Year() >= 2025 {
+		appendHistory(probeHistoryPath, ProbeSample{At: p.LastRecovery, Kind: "recovery", Reason: p.RecoveryReason})
+	}
 	appendEvent("recovery", "Восстановление VPN: "+redact(reason))
 }
 

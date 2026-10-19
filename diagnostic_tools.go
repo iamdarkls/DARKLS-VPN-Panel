@@ -307,7 +307,7 @@ func (s *Server) report() []byte {
 	for _, x := range [][2]string{{"nat", "DV_NAT"}, {"mangle", "DV_UDP"}, {"filter", "DV_IN"}} {
 		rules[x[1]] = s.expandedChain(x[0], x[1])
 	}
-	out := map[string]any{"format": 1, "panel_version": version, "xray_version": string(v), "created_at": time.Now().UTC(), "connectivity": c, "probe": readProbeState(), "metrics": s.metrics(), "profile": s.profileStatus(), "transport": map[string]string{"protocol": protocol, "network": network}, "rules": rules, "services": s.serviceHistory(), "events": readEvents(), "logs": map[string]string{"watch": tailLog("/tmp/darkls-watch.log"), "xray": errorLines(tailLog("/tmp/xray.log")), "dns": errorLines(tailLog("/tmp/dnsmasq-vpn.log"))}, "privacy": "Конфиг, пароли, VPN-ключи и cookies не включены. IP/MAC псевдонимизированы. Список посещённых сайтов не выгружается; выбранные проверки сервисов остаются."}
+	out := map[string]any{"activity": s.activity(), "format": 1, "panel_version": version, "xray_version": string(v), "created_at": time.Now().UTC(), "connectivity": c, "probe": readProbeState(), "metrics": s.metrics(), "profile": s.profileStatus(), "transport": map[string]string{"protocol": protocol, "network": network}, "rules": rules, "services": s.serviceHistory(), "events": readEvents(), "logs": map[string]string{"watch": tailLog("/tmp/darkls-watch.log"), "xray": errorLines(tailLog("/tmp/xray.log")), "dns": errorLines(tailLog("/tmp/dnsmasq-vpn.log"))}, "privacy": "Конфиг, пароли, VPN-ключи и cookies не включены. IP/MAC псевдонимизированы. Список посещённых сайтов не выгружается; выбранные проверки сервисов остаются."}
 	data := s.scrub(string(jsonBytes(out)))
 	data = reportMAC.ReplaceAllStringFunc(data, pseudonym)
 	data = reportIP.ReplaceAllStringFunc(data, pseudonym)

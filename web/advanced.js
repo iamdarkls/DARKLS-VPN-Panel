@@ -50,6 +50,7 @@ function output(parent) {
 function select(parent, choices, label) {
   const wrap = el('label', '', label),
     n = el('select');
+  n.setAttribute('aria-label', label);
   for (const [value, text] of choices) {
     const o = el('option', '', text);
     o.value = value;

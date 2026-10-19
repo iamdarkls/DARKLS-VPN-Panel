@@ -30,6 +30,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.githubLoop(ctx)
 	go s.coreLoop(ctx)
 	go s.cleanupLoop(ctx)
+	go runPeriodic(ctx, 10*time.Second, time.Minute, s.sampleResources)
 }
 
 // Timer expiry and DHCP refresh share one state read and one scheduling loop.

@@ -34,7 +34,7 @@ import (
 //go:embed web/*
 var webFiles embed.FS
 
-var version = "1.4.4"
+var version = "1.5.0"
 
 type Auth struct {
 	User string `json:"user"`
@@ -188,7 +188,7 @@ func (s *Server) handler() http.Handler {
 				w.WriteHeader(405)
 				return
 			}
-			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" && r.URL.Path != "/advanced.js" && r.URL.Path != "/core.js" {
+			if r.URL.Path != "/" && r.URL.Path != "/app.js" && r.URL.Path != "/theme.js" && r.URL.Path != "/style.css" && r.URL.Path != "/advanced.js" && r.URL.Path != "/core.js" && r.URL.Path != "/manage.js" {
 				http.NotFound(w, r)
 				return
 			}
@@ -206,6 +206,12 @@ func (s *Server) handler() http.Handler {
 		}
 		if r.Method == "POST" && updateBusy() && r.URL.Path != "/api/logout" {
 			fail(w, 409, errors.New("выполняется обновление панели"))
+			return
+		}
+		if s.connectionAPI(w, r) {
+			return
+		}
+		if s.activityAPI(w, r) {
 			return
 		}
 		if s.coreAPI(w, r) {

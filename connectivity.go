@@ -354,7 +354,7 @@ func (s *Server) checkRoutingOnly() error {
 func (s *Server) scrub(text string) string {
 	text = secretURL.ReplaceAllString(text, "[VPN URI скрыт]")
 	text = secretUUID.ReplaceAllString(text, "[UUID скрыт]")
-	for _, name := range []string{"config-vpn.json", "panel/profiles/primary.json", "panel/profiles/backup.json"} {
+	for _, name := range []string{"config-vpn.json", "panel/profiles/primary.json", "panel/profiles/backup.json", "panel/connections.json", "panel/previous-connection.json", "panel/profile-switch-journal.json"} {
 		b, e := os.ReadFile(filepath.Join(s.root, name))
 		if e != nil {
 			continue
@@ -375,7 +375,8 @@ func (s *Server) scrub(text string) string {
 					walk(a, k)
 				}
 			case string:
-				if len(x) >= 4 && (k == "id" || k == "password" || k == "publicKey" || k == "privateKey" || k == "shortId" || k == "address" || k == "serverName" || k == "email" || k == "path" || k == "serviceName" || k == "spiderX" || k == "auth" || k == "token" || k == "secret" || k == "username") {
+				k = strings.ToLower(k)
+				if len(x) >= 4 && (k == "id" || k == "password" || k == "publickey" || k == "privatekey" || k == "shortid" || k == "address" || k == "servername" || k == "email" || k == "path" || k == "servicename" || k == "spiderx" || k == "auth" || k == "token" || k == "secret" || k == "username" || k == "authorization" || k == "cookie" || k == "apikey" || k == "host" || k == "encryption") {
 					text = strings.ReplaceAll(text, x, "[скрыто]")
 					encoded, _ := json.Marshal(x)
 					if len(encoded) > 2 {

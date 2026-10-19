@@ -23,9 +23,11 @@ const coreCheckEnabled = check(coreBox, 'Автоматически провер
   coreHour = field(coreBox, 'Час автоустановки, московское время (0–23)', 'number');
 coreHour.min = 0;
 coreHour.max = 23;
-const coreDraft = draftFields([coreCheckEnabled, coreAutoEnabled, coreHour]);
+const coreDelay = field(coreBox, 'Отсрочка после публикации, дней (0–30)', 'number');
+coreDelay.min = 0; coreDelay.max = 30;
+const coreDraft = draftFields([coreCheckEnabled, coreAutoEnabled, coreHour, coreDelay]);
 coreBox.append(el('p', 'tiny muted',
-  'Автоустановка требует подключённую USB WINDOWS_10 и свежую успешную проверку VPN. Неудачная версия блокируется для автоматических повторов. За ночь выполняется не больше одной попытки; промежуточные скачанные файлы хранятся на USB и удаляются после операции.'
+  'Отсрочка действует на стабильные выпуски и пререлизы; ручная установка доступна сразу. Если дата публикации неизвестна, автоустановка с отсрочкой ждёт следующей проверки. Автоустановка требует подключённую USB WINDOWS_10 и свежую успешную проверку VPN. Неудачная версия блокируется для автоматических повторов. За ночь выполняется не больше одной попытки; промежуточные скачанные файлы хранятся на USB и удаляются после операции.'
   ));
 const corePassword = field(coreBox, 'Текущий пароль панели', 'password'),
   coreRetry = check(coreBox, 'Явно повторить установку ранее неудачной версии');
@@ -38,7 +40,8 @@ button(coreBox, 'Сохранить режим обновления Xray', async
     settings: {
       check: coreCheckEnabled.checked,
       auto_install: coreAutoEnabled.checked,
-      hour_msk: Number(coreHour.value)
+      hour_msk: Number(coreHour.value),
+      delay_days: Number(coreDelay.value)
     }
   });
   corePassword.value = '';
@@ -95,7 +98,8 @@ async function readCore() {
   coreDraft.sync(() => {
     coreCheckEnabled.checked = p.check;
     coreAutoEnabled.checked = p.auto_install;
-    coreHour.value = p.hour_msk
+    coreHour.value = p.hour_msk;
+    coreDelay.value = p.delay_days ?? 3
   });
   coreInstallButton.disabled = !s.available || coreBusy;
   coreInstallButton.dataset.locked = String(coreInstallButton.disabled);
@@ -106,6 +110,8 @@ async function readCore() {
     ['Последний выпуск', s.latest || 'Ещё не проверен'],
     ['Тип выпуска', s.latest ? (s.prerelease ? 'Пререлиз' : 'Стабильный') : 'Ещё не проверен'],
     ['Проверено', stamp(s.checked_at)],
+    ['Опубликован', stamp(s.published_at)],
+    ['Автоустановка не раньше', (p.delay_days ?? 3) === 0 ? 'Без отсрочки' : s.published_at ? stamp(s.published_at + (p.delay_days ?? 3) * 86400) : 'Ожидаем дату публикации'],
     ['Состояние', s.error || (s.available ? 'Доступно обновление' : s.latest && s.current && s
       .latest !== s.current ? 'Источник предлагает более старую версию — понижение запрещено' :
       'Обновлений нет')],
