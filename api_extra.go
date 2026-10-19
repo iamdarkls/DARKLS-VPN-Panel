@@ -2,90 +2,15 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
-	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
-func (s *Server) authSnapshot() Auth { s.authMu.RLock(); defer s.authMu.RUnlock(); return s.auth }
-func (s *Server) currentPassword(r *http.Request, password string) error {
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	now := time.Now()
-	s.loginMu.Lock()
-	recent := []time.Time{}
-	for _, t := range s.attempts[ip] {
-		if now.Sub(t) < 5*time.Minute {
-			recent = append(recent, t)
-		}
-	}
-	if len(recent) >= 10 {
-		s.loginMu.Unlock()
-		return errors.New("слишком много попыток; повторите через 5 минут")
-	}
-	s.attempts[ip] = append(recent, now)
-	s.loginMu.Unlock()
-	a := s.authSnapshot()
-	h := passwordHash(password, a.Salt)
-	if subtle.ConstantTimeCompare([]byte(h), []byte(a.Hash)) != 1 {
-		return errors.New("неверный текущий пароль")
-	}
-	s.loginMu.Lock()
-	delete(s.attempts, ip)
-	s.loginMu.Unlock()
-	return nil
-}
-func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
-	if !s.mutation.TryLock() {
-		fail(w, 409, errors.New("другая операция уже выполняется"))
-		return
-	}
-	defer s.mutation.Unlock()
-	var req struct {
-		Current  string `json:"current"`
-		Password string `json:"password"`
-	}
-	if e := decode(w, r, &req); e != nil {
-		fail(w, 400, e)
-		return
-	}
-	if !utf8.ValidString(req.Password) || utf8.RuneCountInString(req.Password) < 12 || utf8.RuneCountInString(req.Password) > 128 {
-		fail(w, 400, errors.New("новый пароль: от 12 до 128 символов"))
-		return
-	}
-	release, e := s.pause()
-	if e != nil {
-		fail(w, 409, e)
-		return
-	}
-	defer release()
-	if e = s.currentPassword(r, req.Current); e != nil {
-		fail(w, 403, e)
-		return
-	}
-	a := s.authSnapshot()
-	a.Salt = token()
-	a.Hash = passwordHash(req.Password, a.Salt)
-	if e = atomicWrite(filepath.Join(s.dir, "auth.json"), jsonBytes(a)); e != nil {
-		fail(w, 500, e)
-		return
-	}
-	s.authMu.Lock()
-	s.auth = a
-	s.authMu.Unlock()
-	s.sessionMu.Lock()
-	s.sessions = map[string]Session{}
-	s.sessionMu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: "darkls_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
-	appendEvent("security", "Пароль панели изменён; прежние сеансы завершены")
-	respond(w, 200, map[string]bool{"ok": true})
-}
 func (s *Server) diagnose(w http.ResponseWriter, r *http.Request) {
 	if !s.diagnosticMu.TryLock() {
 		fail(w, 409, errors.New("диагностика уже выполняется"))

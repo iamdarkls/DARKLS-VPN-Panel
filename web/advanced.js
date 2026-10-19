@@ -3,107 +3,6 @@
 // are sent only to the router and never retained in browser storage.
 // Background refresh may update status, but must preserve an edited form.
 // A new login discards the previous session's draft on its first refresh.
-function draftFields(inputs) {
-  let changed = false,
-    session = csrf;
-  for (const input of inputs) input.addEventListener('input', () => {
-    changed = true;
-    session = csrf
-  });
-  return {
-    saved() {
-      changed = false;
-      session = csrf
-    },
-    sync(render) {
-      if (session !== csrf) {
-        changed = false;
-        session = csrf
-      }
-      if (!changed) render()
-    }
-  };
-}
-
-function box(parent, title, description) {
-  const n = el('div', 'panel-box');
-  n.append(el('h2', '', title));
-  if (description) n.append(el('p', 'muted', description));
-  parent.append(n);
-  return n
-}
-
-function button(parent, label, fn, kind = 'secondary') {
-  const b = el('button', kind, label);
-  b.type = 'button';
-  b.onclick = () => action(b, fn);
-  parent.append(b);
-  return b
-}
-
-function output(parent) {
-  const n = el('div', 'advanced-result');
-  parent.append(n);
-  return n
-}
-
-function select(parent, choices, label) {
-  const wrap = el('label', '', label),
-    n = el('select');
-  n.setAttribute('aria-label', label);
-  for (const [value, text] of choices) {
-    const o = el('option', '', text);
-    o.value = value;
-    n.append(o)
-  }
-  wrap.append(n);
-  parent.append(wrap);
-  return n
-}
-
-function field(parent, label, type = 'text') {
-  const wrap = el('label', '', label),
-    n = el('input');
-  n.type = type;
-  if (type === 'password') {
-    n.autocomplete = 'current-password';
-    n.dataset.secret = 'true'
-  }
-  wrap.append(n);
-  parent.append(wrap);
-  return n
-}
-
-function check(parent, label) {
-  const wrap = el('label', 'quic-label'),
-    n = el('input');
-  n.type = 'checkbox';
-  wrap.append(n, document.createTextNode(label));
-  parent.append(wrap);
-  return n
-}
-
-function showRows(node, rows, columns) {
-  node.replaceChildren();
-  const wrap = el('div', 'table-scroll'),
-    table = el('table', 'advanced-table'),
-    head = el('tr');
-  for (const [, label] of columns) head.append(el('th', '', label));
-  const thead = el('thead');
-  thead.append(head);
-  table.append(thead);
-  const body = el('tbody');
-  for (const row of rows) {
-    const tr = el('tr');
-    for (const [key] of columns) tr.append(el('td', '', row[key] ?? '—'));
-    body.append(tr)
-  }
-  table.append(body);
-  wrap.append(table);
-  node.append(wrap);
-  if (!rows.length) node.append(el('p', 'muted', 'Пока нет данных.'))
-}
-
 function cleanDraft() {
   if (dirty()) throw new Error('Сначала примени или отмени изменения списков.')
 }
@@ -388,7 +287,7 @@ button(profileBox, 'Проверить и сохранить резерв', asyn
   } finally {
     profilePassword.value = ''
   }
-  await loadAdvancedSettings()
+  await loadProfiles()
 });
 for (const [profile, label] of [
     ['primary', 'Переключиться на основной'],
@@ -405,7 +304,7 @@ for (const [profile, label] of [
   } finally {
     profilePassword.value = ''
   }
-  await loadAdvancedSettings()
+  await loadProfiles()
 });
 const monitorBox = box($('stability-monitor'), 'Контроль связи',
   'История и ограниченные HTTPS-пробы работают независимо от открытой панели. При отказе одного сервиса Xray не перезапускается. Резерв включается только при подтверждённом отказе общего туннеля и успешной проверке второго канала; автоматического возврата на основной нет.'
@@ -415,6 +314,8 @@ const monitorEnabled = check(monitorBox, 'Периодически провер�
   monitorInterval = field(monitorBox, 'Интервал в секундах: 120–3600', 'number'),
   monitorFailover = check(monitorBox, 'Автоматически переключаться на проверенный резерв'),
   monitorPassword = field(monitorBox, 'Текущий пароль', 'password');
+// Do not offer failover until the router confirms a configured backup.
+monitorFailover.disabled = true;
 monitorInterval.min = 120;
 monitorInterval.max = 3600;
 const monitorDraft = draftFields([monitorEnabled, monitorInterval, monitorFailover]);
@@ -430,21 +331,24 @@ button(monitorBox, 'Сохранить контроль связи', async () =>
   monitorPassword.value = '';
   monitorDraft.saved();
   notice('Настройки контроля сохранены.');
-  await loadAdvancedSettings()
+  await loadMonitorSettings()
 });
-async function loadAdvancedSettings() {
-  const [p, f] = await Promise.all([api('preferences'), api('profiles')]);
+async function loadMonitorSettings() {
+  const [preferences, profiles] = await Promise.all([api('preferences'), api('profiles')]);
   monitorDraft.sync(() => {
-    monitorEnabled.checked = p.monitor_services;
-    monitorInterval.value = p.interval_seconds;
-    monitorFailover.checked = p.auto_failover
+    monitorEnabled.checked = preferences.monitor_services;
+    monitorInterval.value = preferences.interval_seconds;
+    monitorFailover.checked = preferences.auto_failover
   });
-  monitorFailover.disabled = !f.backup_configured;
+  monitorFailover.disabled = !profiles.backup_configured;
+}
+async function loadProfiles() {
+  const profiles = await api('profiles');
   facts(profileResult, [
-    ['Активный канал', f.active === 'backup' ? 'Резервный' : 'Основной'],
-    ['Резерв', f.backup_configured ? 'Добавлен и проверен' : 'Не настроен'],
-    ['Автопереключение', f.auto_failover ? 'Включено' : 'Выключено'],
-    ['Последнее переключение', stamp(f.last_switch)]
+    ['Активный канал', profiles.active === 'backup' ? 'Резервный' : 'Основной'],
+    ['Резерв', profiles.backup_configured ? 'Добавлен и проверен' : 'Не настроен'],
+    ['Автопереключение', profiles.auto_failover ? 'Включено' : 'Выключено'],
+    ['Последнее переключение', stamp(profiles.last_switch)]
   ])
 }
 const storageBox = box($('backups-files'), 'Копии и установочные архивы',

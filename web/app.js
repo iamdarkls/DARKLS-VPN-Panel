@@ -5,10 +5,8 @@ let state, original, revision, csrf = '',
   currentView = 'sites',
   statusBusy = false,
   deviceData = [],
-  lastStatus = {},
-  viewBusy = false;
-const $ = id => document.getElementById(id),
-  clone = obj => JSON.parse(JSON.stringify(obj));
+  lastStatus = {};
+const clone = obj => JSON.parse(JSON.stringify(obj));
 let catalogNotes = {};
 const categories = {
   video: 'Видео',
@@ -23,19 +21,6 @@ const categories = {
   adult: '18+',
   custom: 'Мои группы'
 };
-const titles = {
-  servers: ['VPN-серверы', 'Подключения, сохранённые серверы и безопасное переключение.'],
-  stability: ['Контроль связи', 'История доступности, восстановление и автоматический контроль.'],
-  tuning: ['Настройка связи', 'QUIC, параметры XHTTP и задержка под нагрузкой.'],
-  updates: ['Обновления', 'Панель с GitHub, ядро Xray и ручная установка — в одном месте.'],
-  sites: ['Сайты и сервисы', 'Выбирай, что открывать через твой VPN.'],
-  devices: ['Устройства', 'Определи, какие устройства используют выбранные маршруты.'],
-  diagnostics: ['Диагностика', 'Соединение, DNS и маршрутизация сайтов.'],
-  metrics: ['Ресурсы роутера', 'Фактическая память, CPU и свободное место.'],
-  logs: ['Журнал событий', 'Что менялось и почему восстанавливался VPN.'],
-  backups: ['Копии и файлы', 'Восстановление настроек, импорт, экспорт и очистка места.'],
-  settings: ['Пароль панели', 'Управление доступом к локальной панели.']
-};
 const icons = {
   youtube: '▶',
   chatgpt: '✳',
@@ -47,12 +32,6 @@ const icons = {
   custom: '+'
 };
 
-function el(tag, className, text) {
-  const n = document.createElement(tag);
-  if (className) n.className = className;
-  if (text !== undefined) n.textContent = text;
-  return n
-}
 async function api(path, method = 'GET', body) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -507,82 +486,7 @@ async function loadBackups() {
   if (!data.backups.length) $('backups').append(el('div', 'empty',
     'Копии появятся после первого применения настроек.'))
 }
-// Keep navigation in memory: it never changes router settings or discards form drafts.
-function selectedTab(group) {
-  return document.querySelector(`[data-tabs="${group}"] [aria-selected="true"]`)?.dataset.tab;
-}
-let refreshAgain = false;
-async function refreshView() {
-  // If the user navigates during a slow read, refresh the latest destination next.
-  if (viewBusy) { refreshAgain = true; return }
-  viewBusy = true;
-  const view = currentView, tab = selectedTab(view);
-  try {
-    if (view === 'servers') {
-      if (tab === 'servers-main') await loadConnections();
-      else await loadAdvancedSettings()
-    }
-    if (view === 'devices') await loadDevices();
-    if (view === 'metrics') await loadMetrics();
-    if (view === 'logs') await loadLogs();
-    if (view === 'backups' && tab === 'backups-history') await loadBackups();
-    if (view === 'backups' && tab === 'backups-files') await loadStorage();
-    if (view === 'updates' && tab === 'updates-panel') await loadGitHub();
-    if (view === 'updates' && tab === 'updates-core') await loadCore();
-    if (view === 'stability' && tab === 'stability-history') {
-      await loadActivity(true);
-      await loadServiceHistory()
-    }
-    if (view === 'stability' && tab === 'stability-monitor') await loadAdvancedSettings();
-    if (view === 'diagnostics') await loadDiagnosticDevices()
-  } catch (e) {
-    notice(e.message, true)
-  } finally {
-    viewBusy = false;
-    if (refreshAgain) {
-      refreshAgain = false;
-      if (csrf) await refreshView()
-    }
-  }
-}
-function openView(view) {
-  if (!titles[view]) return;
-  currentView = view;
-  document.querySelectorAll('.nav').forEach(b => {
-    const active = b.dataset.view === view;
-    b.classList.toggle('active', active);
-    if (active) b.setAttribute('aria-current', 'page');
-    else b.removeAttribute('aria-current')
-  });
-  for (const key of Object.keys(titles)) $(key + '-view').classList.toggle('hidden', view !== key);
-  $('page-title').textContent = titles[view][0];
-  $('page-subtitle').textContent = titles[view][1];
-  return refreshView()
-}
-document.querySelectorAll('.nav').forEach(button => button.onclick = () => openView(button.dataset.view));
-// WAI-ARIA tabs: one tab stop, arrow navigation, Home/End and labelled panels.
-document.querySelectorAll('[data-tabs]').forEach(list => {
-  const buttons = [...list.querySelectorAll('[role="tab"]')];
-  function selectTab(button) {
-    for (const other of buttons) {
-      const active = other === button;
-      other.setAttribute('aria-selected', String(active));
-      other.tabIndex = active ? 0 : -1;
-      $(other.dataset.tab).classList.toggle('hidden', !active)
-    }
-    if (currentView === list.dataset.tabs) refreshView()
-  }
-  for (const [index, button] of buttons.entries()) {
-    button.onclick = () => selectTab(button);
-    button.onkeydown = event => {
-      const target = {ArrowRight:(index+1)%buttons.length, ArrowLeft:(index+buttons.length-1)%buttons.length, Home:0, End:buttons.length-1}[event.key];
-      if (target === undefined) return;
-      event.preventDefault();
-      buttons[target].focus();
-      selectTab(buttons[target])
-    }
-  }
-});
+initNavigation();
 $('discard').onclick = () => {
   state = clone(original);
   render();
@@ -726,7 +630,7 @@ window.addEventListener('beforeunload', e => {
 setInterval(() => {
   if (!document.hidden && csrf && !busy) {
     status();
-    if (['metrics', 'logs', 'devices'].includes(currentView)) refreshView()
+    if (views[currentView]?.poll) refreshView()
   }
 }, 30000);
 document.addEventListener('visibilitychange', () => {
