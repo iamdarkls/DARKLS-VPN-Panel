@@ -2,9 +2,10 @@
 
 [Главная](../README.md) · [Архитектура](ARCHITECTURE.md)
 
-**Go 1.27.2**, Python 3. Внешних Go-модулей и фронтенд-сборщика нет.
+**Go 1.27.2**, Python 3. Внешних Go-модулей и JavaScript-фреймворков нет. Сжатые ресурсы интерфейса подготавливает небольшой Python-скрипт.
 
 ```sh
+python3 tools/build_assets.py --check
 go test -race ./...
 go vet ./...
 python3 -m unittest discover -s tools -p "test_*.py"
@@ -23,7 +24,7 @@ python3 tools/build_release.py
 
 ## Модули и браузерные проверки
 
-`web/js/core/ui.js` содержит общие DOM-элементы и FormDraft, `web/js/components/navigation.js` — PanelNavigation и реестр разделов. Далее загружаются `web/js/features/app.js` и остальные функциональные модули. Скрипты исполняются последовательно с `defer`; сборщик фронтенда не требуется.
+`web/js/core/ui.js` содержит общие DOM-элементы и FormDraft, `web/js/components/navigation.js` — PanelNavigation и реестр разделов. Далее загружаются `web/js/features/app.js` и остальные функциональные модули. Скрипты исполняются последовательно с `defer`; npm-сборщик не требуется.
 
 Браузерные сценарии требуют Node.js, Playwright и Chromium:
 
@@ -58,3 +59,16 @@ go test ./internal/panel -run TestBrowserHarness -v
 Версия бинарника задаётся сборщиком через `-X darkls-panel/internal/panel.version=<версия>`. Прежний путь `main.version` после выделения пакета не используется. Публичный ключ подписи имеет единственный исходник `assets/github-public-key.txt`; `tools/releasekey` использует этот путь по умолчанию. Каталог `assets/` не должен содержать приватные ключи.
 
 Реорганизация касается исходников. На роутере по-прежнему устанавливается один бинарник и прежние shell-скрипты, а манифест и формат шестикомпонентного ZIP не меняются.
+
+## Изменение HTML, JavaScript и CSS
+
+После правки исходников `web/index.html`, `web/js/` или `web/css/` запусти:
+
+```sh
+python3 tools/build_assets.py
+gofmt -w web/assets_generated.go
+```
+
+`web/assets_generated.go` коммитится вместе с исходниками. Бинарник хранит только gzip-представление UI, без второй несжатой копии. Сборка и CI проверяют хеши исходников; Go-тесты распаковывают каждую запись и сравнивают её с редактируемым файлом. Проверка свежести не зависит от различий zlib на машинах разработчика и CI.
+
+JS/CSS поддерживают ETag и обязательную перепроверку кеша. Главная HTML-страница и API используют `no-store`; содержимое API, реквизиты и результаты диагностики не попадают в статический кеш.

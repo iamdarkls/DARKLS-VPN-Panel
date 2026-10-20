@@ -1,0 +1,25 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH});
+ const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const root='http://127.0.0.1:18088';
+ await page.goto(root);await page.locator('#login-form').waitFor();
+ const gzip=await page.request.get(root+'/js/core/ui.js',{headers:{'Accept-Encoding':'gzip'}});
+ assert.equal(gzip.headers()['content-encoding'],'gzip');assert.equal(gzip.headers()['cache-control'],'no-cache');
+ const source=await gzip.text();assert(source.includes('class FormDraft'));
+ const cached=await page.request.get(root+'/js/core/ui.js',{headers:{'If-None-Match':gzip.headers().etag}});
+ assert.equal(cached.status(),304);assert.equal((await cached.body()).length,0);
+ const identity=await page.request.get(root+'/js/core/ui.js',{headers:{'Accept-Encoding':'identity'}});
+ assert.equal(identity.headers()['content-encoding'],undefined);assert.equal(await identity.text(),source);
+ const refused=await page.request.get(root+'/js/core/ui.js',{headers:{'Accept-Encoding':'gzip;q=0, identity;q=0'}});
+ assert.equal(refused.status(),406);
+ await page.reload();await page.locator('#login-form input[name=password]').fill('preview-password');
+ await page.locator('#login-form button').click();await page.locator('.card').first().waitFor();
+ const session=await page.request.get(root+'/api/session',{headers:{'If-None-Match':'*'}});
+ assert.equal(session.status(),200);assert.equal(session.headers()['cache-control'],'no-store');assert.equal(session.headers().etag,undefined);
+ const html=await page.request.get(root+'/',{headers:{'If-None-Match':'*'}});
+ assert.equal(html.status(),200);assert.equal(html.headers()['cache-control'],'no-store');
+ assert.deepEqual(errors,[]);await browser.close();
+ console.log('PASS: gzip UI, ETag 304, identity fallback, 406 exclusions, reload, uncached authenticated API and HTML');
+})().catch(e=>{console.error(e);process.exit(1)});

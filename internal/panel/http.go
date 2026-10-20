@@ -53,7 +53,7 @@ func (s *Server) allowedIP(r *http.Request) bool {
 }
 
 func (s *Server) handler() http.Handler {
-	static := http.FileServer(http.FS(web.Files))
+	static := http.HandlerFunc(web.ServeAsset)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

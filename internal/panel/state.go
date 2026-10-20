@@ -37,7 +37,26 @@ type State struct {
 
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
-var labelPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+// DNS labels are ASCII after normalization. Scan once instead of allocating a
+// label slice and running a regular expression for every label on every read.
+func validDomainLabels(domain string) bool {
+	start := 0
+	for i := 0; i <= len(domain); i++ {
+		if i == len(domain) || domain[i] == '.' {
+			length := i - start
+			if length < 1 || length > 63 || domain[start] == '-' || domain[i-1] == '-' {
+				return false
+			}
+			start = i + 1
+			continue
+		}
+		c := domain[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
 
 func normalizeDomain(raw string) (string, error) {
 	d := strings.TrimSpace(raw)
@@ -55,10 +74,8 @@ func normalizeDomain(raw string) (string, error) {
 	if _, e := netip.ParseAddr(d); e == nil {
 		return "", errors.New("введите домен сайта, а не IP-адрес")
 	}
-	for _, p := range strings.Split(d, ".") {
-		if !labelPattern.MatchString(p) {
-			return "", fmt.Errorf("неверный домен %q; для кириллицы используйте punycode", raw)
-		}
+	if !validDomainLabels(d) {
+		return "", fmt.Errorf("неверный домен %q; для кириллицы используйте punycode", raw)
 	}
 	return d, nil
 }
@@ -73,13 +90,16 @@ func validate(st State) (State, error) {
 	}
 	ids := map[string]bool{}
 	total := 0
+	now := time.Now()
+	clockReady := now.Year() >= 2025
+	latest := now.Add(8 * 24 * time.Hour).Unix()
 	for i := range st.Groups {
 		g := &st.Groups[i]
 		g.Name = strings.TrimSpace(g.Name)
 		if g.BlockQUIC == nil {
 			g.BlockQUIC = boolRef(g.ID == "youtube")
 		}
-		if g.EnabledUntil < 0 || g.QUICUntil < 0 || (time.Now().Year() >= 2025 && (g.EnabledUntil > time.Now().Add(8*24*time.Hour).Unix() || g.QUICUntil > time.Now().Add(8*24*time.Hour).Unix())) {
+		if g.EnabledUntil < 0 || g.QUICUntil < 0 || (clockReady && (g.EnabledUntil > latest || g.QUICUntil > latest)) {
 			return st, errors.New("неверный срок временной настройки")
 		}
 		if !idPattern.MatchString(g.ID) || ids[g.ID] {

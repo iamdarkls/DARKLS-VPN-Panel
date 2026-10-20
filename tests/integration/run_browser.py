@@ -12,7 +12,7 @@ import urllib.request
 root = pathlib.Path(__file__).resolve().parents[2]
 go = os.environ.get('GO_BIN', 'go')
 node = os.environ.get('NODE_BIN', shutil.which('node') or 'node')
-scenarios = sys.argv[1:] or ['browser-features.cjs', 'browser-advanced.cjs', 'browser-core.cjs', 'browser-manage.cjs', 'browser-organization.cjs']
+scenarios = sys.argv[1:] or ['browser-features.cjs', 'browser-advanced.cjs', 'browser-core.cjs', 'browser-manage.cjs', 'browser-organization.cjs', 'browser-assets.cjs']
 for scenario in scenarios:
     with tempfile.TemporaryFile(mode='w+') as log:
         proc = subprocess.Popen(

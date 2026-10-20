@@ -1,0 +1,177 @@
+{
+  "baseline": "1.8.0",
+  "current": "1.8.1",
+  "baseline_commit": "4d78c85908f1d0b50c6b350ae0be439713c5f65b",
+  "environment": "Linux amd64, AMD EPYC 9V74, Go 1.27.2; local test, not ASUS or VPN throughput",
+  "build_flags": "CGO_ENABLED=0 -trimpath -gcflags=all=-l -ldflags=\"-s -w -buildid=\"",
+  "arm64_binary_bytes": {
+    "baseline": 7602300,
+    "current": 7340156
+  },
+  "zip_bytes": {
+    "baseline": 2978518,
+    "current": 2346045
+  },
+  "ui_body_bytes": {
+    "identity": 151354,
+    "gzip": 46049
+  },
+  "microbenchmarks": {
+    "baseline": [
+      {
+        "benchmark": "NormalizeDomain",
+        "ns_per_op": 1121.0,
+        "bytes_per_op": 132,
+        "allocs_per_op": 2
+      },
+      {
+        "benchmark": "NormalizeDomain",
+        "ns_per_op": 1087.0,
+        "bytes_per_op": 133,
+        "allocs_per_op": 2
+      },
+      {
+        "benchmark": "NormalizeDomain",
+        "ns_per_op": 1012.0,
+        "bytes_per_op": 132,
+        "allocs_per_op": 2
+      },
+      {
+        "benchmark": "StateRead",
+        "ns_per_op": 504458.0,
+        "bytes_per_op": 98485,
+        "allocs_per_op": 1155
+      },
+      {
+        "benchmark": "StateRead",
+        "ns_per_op": 480938.0,
+        "bytes_per_op": 98432,
+        "allocs_per_op": 1155
+      },
+      {
+        "benchmark": "StateRead",
+        "ns_per_op": 479649.0,
+        "bytes_per_op": 98331,
+        "allocs_per_op": 1155
+      }
+    ],
+    "current": [
+      {
+        "benchmark": "NormalizeDomain",
+        "ns_per_op": 252.3,
+        "bytes_per_op": 88,
+        "allocs_per_op": 1
+      },
+      {
+        "benchmark": "NormalizeDomain",
+        "ns_per_op": 251.4,
+        "bytes_per_op": 88,
+        "allocs_per_op": 1
+      },
+      {
+        "benchmark": "NormalizeDomain",
+        "ns_per_op": 250.9,
+        "bytes_per_op": 88,
+        "allocs_per_op": 1
+      },
+      {
+        "benchmark": "StateRead",
+        "ns_per_op": 307476.0,
+        "bytes_per_op": 89888,
+        "allocs_per_op": 937
+      },
+      {
+        "benchmark": "StateRead",
+        "ns_per_op": 338656.0,
+        "bytes_per_op": 89887,
+        "allocs_per_op": 937
+      },
+      {
+        "benchmark": "StateRead",
+        "ns_per_op": 320462.0,
+        "bytes_per_op": 89887,
+        "allocs_per_op": 937
+      }
+    ]
+  },
+  "http_rss_runs": {
+    "baseline": [
+      {
+        "peak_rss_kib": 13208,
+        "requests": 1200,
+        "seconds": 0.799
+      },
+      {
+        "peak_rss_kib": 12872,
+        "requests": 1200,
+        "seconds": 0.823
+      },
+      {
+        "peak_rss_kib": 13204,
+        "requests": 1200,
+        "seconds": 0.92
+      }
+    ],
+    "current": [
+      {
+        "peak_rss_kib": 12980,
+        "requests": 1200,
+        "seconds": 0.749
+      },
+      {
+        "peak_rss_kib": 12696,
+        "requests": 1200,
+        "seconds": 0.73
+      },
+      {
+        "peak_rss_kib": 13016,
+        "requests": 1200,
+        "seconds": 0.689
+      }
+    ]
+  },
+  "inlining_experiment": {
+    "arm64_binary_bytes": 8323196,
+    "baseline_arm64_binary_bytes": 7602300,
+    "compressed_binary_bytes_zlib9": 3420021,
+    "baseline_compressed_binary_bytes_zlib9": 2973165,
+    "http_runs": {
+      "baseline": [
+        {
+          "peak_rss_kib": 13380,
+          "requests": 1200,
+          "seconds": 0.888
+        },
+        {
+          "peak_rss_kib": 13128,
+          "requests": 1200,
+          "seconds": 0.839
+        },
+        {
+          "peak_rss_kib": 13336,
+          "requests": 1200,
+          "seconds": 0.856
+        }
+      ],
+      "current": [
+        {
+          "peak_rss_kib": 13952,
+          "requests": 1200,
+          "seconds": 0.696
+        },
+        {
+          "peak_rss_kib": 13504,
+          "requests": 1200,
+          "seconds": 0.675
+        },
+        {
+          "peak_rss_kib": 13824,
+          "requests": 1200,
+          "seconds": 0.683
+        }
+      ]
+    },
+    "retained": false
+  },
+  "limits": "Sequential local runs, three repetitions per measurement. RSS ranges overlap; no meaningful reduction of total RAM is established. Static UI size and ARM64 file size are actual bytes, not RAM. Xray throughput was not measured."
+}

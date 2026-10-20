@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ def parse_args(argv=None):
 
 
 def build_binary(root, version, arch):
+    subprocess.run([sys.executable, str(root / 'tools/build_assets.py'), '--check'], check=True)
     binary = root / 'release' / 'darkls-panel'
     env = {**os.environ, 'CGO_ENABLED': '0', 'GOOS': 'linux', 'GOARCH': arch}
     subprocess.run([
