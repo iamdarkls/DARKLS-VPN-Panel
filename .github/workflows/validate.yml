@@ -44,6 +44,6 @@ jobs:
           DARKLS_BASELINE_BINARY: /tmp/darkls-baseline-bin
           DARKLS_CURRENT_BINARY: /tmp/darkls-current-bin
         run: |
-          python3 tests/integration/test_installer.py
-          python3 tests/integration/test_ota.py
-          python3 tests/integration/test_recovery_mode.py
+          sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_installer.py
+          sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_ota.py
+          sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_recovery_mode.py
