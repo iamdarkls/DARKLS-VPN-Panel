@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.27.2'
@@ -29,10 +29,13 @@ jobs:
       - name: Browser scenarios
         env:
           NODE_PATH: /tmp/darkls-browser/node_modules
-        run: python3 tests/integration/run_browser.py
+        run: |
+          export CHROME_PATH="$(node -p 'require("playwright").chromium.executablePath()')"
+          python3 tests/integration/run_browser.py
       - name: Build native update pair
         run: |
-          git worktree add --detach /tmp/darkls-baseline HEAD^
+          BASELINE_REF=$(git describe --tags --match 'v[0-9]*' --abbrev=0 HEAD^ 2>/dev/null || git rev-parse HEAD^)
+          git worktree add --detach /tmp/darkls-baseline "$BASELINE_REF"
           (cd /tmp/darkls-baseline && go build -o /tmp/darkls-baseline-bin ./cmd/darkls-panel)
           go build -o /tmp/darkls-current-bin ./cmd/darkls-panel
       - name: Installer rollback and authenticated OTA
