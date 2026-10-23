@@ -58,6 +58,16 @@ reportLink.href = '/api/report';
 connectivityBox.append(reportLink, el('p', 'tiny muted',
   'JSON: версии, память, правила, результаты проверок и последние ошибки. Пароли и VPN-ключи исключены, IP и MAC заменены метками. История выбранных проверок остаётся. Сбор может занять до 40 секунд.'
   ));
+const pendingBox = box(recovery, 'Завершить незавершённую операцию', 'Если панель сообщает о режиме восстановления, подключи USB с резервной копией и повтори откат. Другие изменения будут доступны после успешного восстановления.');
+const pendingPassword = field(pendingBox, 'Пароль для завершения восстановления', 'password');
+button(pendingBox, 'Повторить восстановление', async () => {
+  try {
+    await api('recovery', 'POST', {password: pendingPassword.value});
+    notice('Восстановление завершено');
+    await loadState();
+    await status();
+  } finally { pendingPassword.value = '' }
+});
 const recoveryBox = box(recovery, 'Восстановить отдельную часть',
   'Автоконтроль сначала чинит процессы, DNS helper и правила. Xray перезапускается только при неисправности его туннеля или DNS-входа. Подключения могут оборваться при переключении канала и перезапуске Xray.'
   );

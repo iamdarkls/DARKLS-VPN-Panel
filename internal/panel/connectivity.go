@@ -192,6 +192,9 @@ func (s *Server) saveConnectivity(c Connectivity) {
 	appendEvent("connectivity", fmt.Sprintf("Xray=%t DNS=%t правила=%t прямой HTTPS=%t сервер TCP=%t VPN HTTPS=%t", c.Xray, c.LocalDNS, c.Rules, c.WAN, c.ServerTCP, c.TunnelHTTPS))
 }
 func (s *Server) recoverComponents(reason string) error {
+	if s.pendingRecovery() {
+		return errors.New("Сначала завершите восстановление незавершённой операции")
+	}
 	if s.disabled() {
 		return nil
 	}
@@ -207,7 +210,7 @@ func (s *Server) recoverComponents(reason string) error {
 		c.Actions = append(c.Actions, "Запущен Xray")
 	}
 	c.Xray = true
-	if !pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf") || testDNS("127.0.0.1:10535") != nil {
+	if !pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf") || dnsFailureConfirmed(func() error { return testDNS("127.0.0.1:10535") }, func() { time.Sleep(2 * time.Second) }) {
 		s.captureRecovery(c, "Восстановление DNS helper: "+reason)
 		if out, e := s.run("sh", filepath.Join(s.dir, "reload-dns.sh")); e != nil {
 			c.Errors["local_dns"] = s.scrub(string(out))

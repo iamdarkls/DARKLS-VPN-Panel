@@ -195,8 +195,14 @@ func (s *Server) installCore(candidate, targetVersion, targetHash string) (err e
 	if e = syscall.Statfs(s.root, &fs); e != nil {
 		return e
 	}
-	if old.Size() <= 0 || next.Size() <= 0 || int64(fs.Bavail)*int64(fs.Bsize) < 4<<20 {
-		return errors.New("нужно минимум 4 МиБ свободного JFFS; резервная копия хранится на USB")
+	// Count physical blocks freed by unlink, not the possibly compressed file's
+	// logical size. Reserve space for UBIFS metadata and rollback before stopping.
+	reclaim := int64(0)
+	if stat, ok := old.Sys().(*syscall.Stat_t); ok {
+		reclaim = stat.Blocks * 512
+	}
+	if old.Size() <= 0 || !coreSpaceEnough(int64(fs.Bavail)*int64(fs.Bsize), reclaim, next.Size()) {
+		return errors.New("недостаточно JFFS для нового ядра и запаса; рабочий Xray не остановлен")
 	}
 
 	backupDir := filepath.Join(usb, "darkls-vpn-backups")
@@ -285,6 +291,11 @@ func (s *Server) installCore(candidate, targetVersion, targetHash string) (err e
 	appendEvent("xray", "Xray обновлён до "+targetVersion+"; прежнее ядро сохранено на USB")
 	fmt.Println("Xray " + targetVersion + " installed; previous binary: " + backup)
 	return nil
+}
+
+func coreSpaceEnough(free, reclaim, candidate int64) bool {
+	const reserve = int64(4 << 20)
+	return free >= reserve && reclaim >= 0 && candidate > 0 && candidate <= coreMaxBinary && free+reclaim >= candidate+reserve
 }
 
 func validateCoreBackup(j coreJournal) error {

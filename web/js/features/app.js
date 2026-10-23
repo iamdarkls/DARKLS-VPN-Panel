@@ -295,6 +295,7 @@ async function status() {
   try {
     const s = await api('status');
     lastStatus = s;
+    $('recovery-warning').classList.toggle('hidden', !s.recovery_pending);
     const active = s.active;
     $('connection').textContent = active ? '● VPN работает' : s.disabled ? '○ VPN выключен' :
       '◌ Требуется проверка';

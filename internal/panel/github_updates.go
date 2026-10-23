@@ -125,18 +125,12 @@ func githubRead(ctx context.Context, raw string, limit int64, consume func(io.Re
 	if !allowedGitHubURL(raw) {
 		return errors.New("неразрешённый адрес GitHub")
 	}
-	var last error
+	var failures []string
 	for _, proxy := range []bool{false, true} {
 		client := githubHTTPClient(proxy)
-		req, e := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+		resp, e := githubRequest(ctx, client, raw)
 		if e != nil {
-			return e
-		}
-		req.Header.Set("User-Agent", "DARKLS-VPN-Panel/"+version)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		resp, e := client.Do(req)
-		if e != nil {
-			last = e
+			failures = append(failures, githubRouteError(proxy, e))
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
@@ -148,7 +142,7 @@ func githubRead(ctx context.Context, raw string, limit int64, consume func(io.Re
 			if resp.StatusCode == 403 || resp.StatusCode == 429 {
 				return errors.New("GitHub ограничил запросы; повторите позже")
 			}
-			last = fmt.Errorf("GitHub HTTP %d", resp.StatusCode)
+			failures = append(failures, githubRouteError(proxy, fmt.Errorf("GitHub HTTP %d", resp.StatusCode)))
 			continue
 		}
 		reader := &io.LimitedReader{R: resp.Body, N: limit + 1}
@@ -163,12 +157,12 @@ func githubRead(ctx context.Context, raw string, limit int64, consume func(io.Re
 			return errors.New("ответ GitHub слишком большой")
 		}
 		if e != nil {
-			last = e
+			failures = append(failures, githubRouteError(proxy, e))
 			continue
 		}
 		return nil
 	}
-	return fmt.Errorf("GitHub недоступен напрямую и через VPN: %v", last)
+	return fmt.Errorf("GitHub недоступен: %s", strings.Join(failures, "; "))
 }
 
 func githubGet(ctx context.Context, raw string, limit int64) ([]byte, error) {
@@ -368,22 +362,24 @@ func downloadVerifiedAsset(ctx context.Context, raw string, size int64, hash, di
 	if !allowedGitHubURL(raw) {
 		return "", errors.New("неразрешённый адрес пакета")
 	}
-	var last error
+	var failures []string
+	route := func(proxy bool, err error) {
+		name := "напрямую"
+		if proxy {
+			name = "через VPN"
+		}
+		failures = append(failures, name+": "+err.Error())
+	}
 	for _, proxy := range []bool{false, true} {
 		client := githubHTTPClient(proxy)
-		req, e := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+		resp, e := githubRequest(ctx, client, raw)
 		if e != nil {
-			return "", e
-		}
-		req.Header.Set("User-Agent", "DARKLS-VPN-Panel/"+version)
-		resp, e := client.Do(req)
-		if e != nil {
-			last = e
+			route(proxy, e)
 			continue
 		}
 		if resp.StatusCode != 200 {
 			resp.Body.Close()
-			last = fmt.Errorf("загрузка HTTP %d", resp.StatusCode)
+			route(proxy, fmt.Errorf("загрузка HTTP %d", resp.StatusCode))
 			continue
 		}
 		f, e := os.CreateTemp(dir, pattern)
@@ -398,12 +394,12 @@ func downloadVerifiedAsset(ctx context.Context, raw string, size int64, hash, di
 		ce := f.Close()
 		if copyErr != nil || ce != nil || n != size || hex.EncodeToString(h.Sum(nil)) != hash {
 			os.Remove(name)
-			last = errors.New("размер или SHA-256 загруженного пакета не совпадает с проверенными метаданными")
+			route(proxy, errors.New("размер или SHA-256 загруженного пакета не совпадает с проверенными метаданными"))
 			continue
 		}
 		return name, nil
 	}
-	return "", last
+	return "", errors.New(strings.Join(failures, "; "))
 }
 func (s *Server) launchUpdate(dir, target string) (UpdateJob, error) {
 	job := UpdateJob{ID: token()[:16], Phase: "staged", Target: target, Message: "Пакет проверен, начинается установка", Started: time.Now().Unix()}

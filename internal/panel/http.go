@@ -101,6 +101,14 @@ func (s *Server) handler() http.Handler {
 			fail(w, 409, errors.New("выполняется обновление панели"))
 			return
 		}
+		if r.Method == "POST" && s.pendingRecovery() && !recoveryRequestAllowed(r.URL.Path) {
+			fail(w, 409, errors.New("Режим восстановления: завершите незавершённую операцию в разделе Контроль связи → Восстановление"))
+			return
+		}
+		if r.URL.Path == "/api/recovery" {
+			s.recoveryAPI(w, r)
+			return
+		}
 		if s.connectionAPI(w, r) {
 			return
 		}
@@ -299,7 +307,7 @@ func (s *Server) status(w http.ResponseWriter) {
 	watch := pidMatches("/tmp/darkls-watch.pid", "/jffs/xray/watch.sh")
 	probe := readProbeState()
 	fresh := probeFresh(probe, time.Now())
-	respond(w, 200, map[string]any{"active": nat && udp && xray && dns && !s.disabled() && probe.OK && fresh, "routes": nat && udp && xray && dns, "disabled": s.disabled(), "nat": nat, "udp": udp, "xray": xray, "dns": dns, "watch": watch, "version": version, "probe": probe, "probe_fresh": fresh})
+	respond(w, 200, map[string]any{"recovery_pending": s.pendingRecovery(), "active": nat && udp && xray && dns && !s.disabled() && probe.OK && fresh, "routes": nat && udp && xray && dns, "disabled": s.disabled(), "nat": nat, "udp": udp, "xray": xray, "dns": dns, "watch": watch, "version": version, "probe": probe, "probe_fresh": fresh})
 }
 
 // Keep the asset allowlist explicit even though the web package embeds asset directories.

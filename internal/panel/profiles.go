@@ -265,34 +265,57 @@ func (s *Server) switchProfile(ctx context.Context, name string) error {
 	if e = replaceVPN(cfg, out); e != nil {
 		return e
 	}
+	return s.commitProfileSwitch(cfg, original, name, s.restartMainXray, checkVPNConnection)
+}
+
+// Keep the recovery journal until both the restored files and the old tunnel
+// have been verified. A restart alone cannot prove that rollback succeeded.
+func (s *Server) commitProfileSwitch(cfg map[string]any, original []byte, name string, restart, probe func() error) (err error) {
 	journal := filepath.Join(s.dir, "profile-switch-journal.json")
-	if e = s.writeProfileJournal(original); e != nil {
-		return e
+	if err = s.writeProfileJournal(original); err != nil {
+		return err
 	}
-	if e = atomicWrite(filepath.Join(s.root, "config-vpn.json"), jsonBytes(cfg)); e != nil {
-		return e
-	}
-	if e = s.restartMainXray(); e == nil {
-		e = checkVPNConnection()
-	}
-	if e != nil {
-		_ = atomicWrite(filepath.Join(s.root, "config-vpn.json"), original)
-		re := s.restartMainXray()
-		if re == nil {
-			_ = os.Remove(journal)
+	committed := false
+	defer func() {
+		if committed {
+			return
 		}
-		return errors.New("переключение не удалось; выполнена попытка возврата прежнего канала")
-	}
-	if e = atomicWrite(filepath.Join(s.dir, "active-profile.json"), jsonBytes(map[string]any{"name": name, "at": time.Now().Unix()})); e != nil {
-		if s.restoreProfileFiles() == nil && s.restartMainXray() == nil {
-			_ = os.Remove(journal)
+		restore := s.restoreProfileFiles()
+		if restore == nil && !s.disabled() {
+			restore = restart()
+			if restore == nil {
+				restore = probe()
+			}
 		}
-		return errors.New("не удалось завершить запись профиля; выполнена попытка отката")
+		if restore == nil {
+			restore = os.Remove(journal)
+		}
+		if restore != nil {
+			err = errors.New("Переключение не завершено; журнал отката сохранён для восстановления")
+		}
+	}()
+	if err = atomicWrite(filepath.Join(s.root, "config-vpn.json"), jsonBytes(cfg)); err != nil {
+		return err
 	}
-	_ = os.Remove(journal)
+	if !s.disabled() {
+		if err = restart(); err == nil {
+			err = probe()
+		}
+		if err != nil {
+			return errors.New("Новый канал не прошёл проверку; выполняем откат")
+		}
+	}
+	if err = atomicWrite(filepath.Join(s.dir, "active-profile.json"), jsonBytes(map[string]any{"name": name, "at": time.Now().Unix()})); err != nil {
+		return err
+	}
+	if err = os.Remove(journal); err != nil {
+		return err
+	}
+	committed = true
 	appendEvent("profile", "Активен канал "+name)
 	return nil
 }
+
 func (s *Server) failover() error {
 	st := s.profileStatus()
 	if st["active"] == "backup" {
@@ -407,6 +430,10 @@ func (s *Server) restoreProfileFiles() error {
 	return nil
 }
 func (s *Server) recoverProfileSwitch() error {
+	return s.recoverProfileSwitchWith(s.restartMainXray, checkVPNConnection)
+}
+
+func (s *Server) recoverProfileSwitchWith(restart, probe func() error) error {
 	path := filepath.Join(s.dir, "profile-switch-journal.json")
 	if _, e := os.Stat(path); os.IsNotExist(e) {
 		return nil
@@ -422,7 +449,10 @@ func (s *Server) recoverProfileSwitch() error {
 		return e
 	}
 	if !s.disabled() {
-		if e = s.restartMainXray(); e != nil {
+		if e = restart(); e != nil {
+			return e
+		}
+		if e = probe(); e != nil {
 			return e
 		}
 	}

@@ -566,7 +566,7 @@ func (s *Server) coreLoop(ctx context.Context) {
 		s.coreProgress(&j, "interrupted", "Панель перезапущена; проверьте версию и журнал восстановления")
 	}
 	runPeriodic(ctx, 45*time.Second, 15*time.Minute, func() {
-		if time.Now().Year() >= 2025 && !updateBusy() && s.coreMu.TryLock() {
+		if time.Now().Year() >= 2025 && !updateBusy() && !s.pendingRecovery() && s.coreMu.TryLock() {
 			p := s.coreSettings()
 			st := s.coreStatus()
 			if p.Check && !coreJobActive(s.coreJob()) && releaseCheckDue(time.Now(), st.CheckedAt, st.Error) {

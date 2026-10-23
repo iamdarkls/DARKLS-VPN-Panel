@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-var version = "1.8.2"
+var version = "1.8.3"
 
 func tuneRuntime() {
 	// The local control panel has little parallel work. Bound Go's memory target
@@ -196,7 +196,7 @@ func Run() {
 			}
 			return
 		}
-		if _, e = os.Stat(filepath.Join(s.dir, "apply-journal.json")); e == nil {
+		if s.pendingRecovery() {
 			log.Print("Незавершённое применение: ожидаем восстановления панелью")
 			return
 		}
@@ -208,12 +208,6 @@ func Run() {
 			os.Exit(1)
 		}
 		return
-	}
-	if e := s.recoverCoreJournal(); e != nil {
-		log.Fatal(e)
-	}
-	if e := s.recoverProfileSwitch(); e != nil {
-		log.Fatal(e)
 	}
 	authPath := filepath.Join(s.dir, "auth.json")
 	if *initAuth || *reset {
@@ -233,9 +227,6 @@ func Run() {
 	if e := readJSON(authPath, &s.auth); e != nil {
 		log.Fatal("сначала выполните darkls-panel --init")
 	}
-	if e := s.recoverJournal(); e != nil {
-		log.Fatal("восстановление незавершённого применения: ", e)
-	}
 	listener, e := net.Listen("tcp", *listen)
 	if e != nil {
 		log.Fatal(e)
@@ -245,6 +236,9 @@ func Run() {
 		log.Fatal(e)
 	}
 	defer os.Remove(pidPath)
+	if e := s.recoverPending(); e != nil {
+		log.Print("Режим восстановления; изменения заблокированы: ", s.scrub(e.Error()))
+	}
 	// Start workers only after binding the listener: a second panel process must
 	// not mutate router state when its HTTP port is already occupied.
 	background, cancelBackground := context.WithCancel(context.Background())

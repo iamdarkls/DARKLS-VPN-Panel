@@ -1,0 +1,45 @@
+name: Full validation
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - run: python3 tools/build_assets.py --check
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: python3 -m unittest discover -s tools -p 'test_*.py'
+      - name: Validate router scripts
+        run: |
+          for script in router/*.sh release/*.sh; do sh -n "$script"; done
+      - name: Install browser test tools
+        run: |
+          npm install --prefix /tmp/darkls-browser --no-save --ignore-scripts playwright@1.62.1
+          /tmp/darkls-browser/node_modules/.bin/playwright install --with-deps chromium
+      - name: Browser scenarios
+        env:
+          NODE_PATH: /tmp/darkls-browser/node_modules
+        run: python3 tests/integration/run_browser.py
+      - name: Build native update pair
+        run: |
+          git worktree add --detach /tmp/darkls-baseline HEAD^
+          (cd /tmp/darkls-baseline && go build -o /tmp/darkls-baseline-bin ./cmd/darkls-panel)
+          go build -o /tmp/darkls-current-bin ./cmd/darkls-panel
+      - name: Installer rollback and authenticated OTA
+        env:
+          DARKLS_BASELINE_BINARY: /tmp/darkls-baseline-bin
+          DARKLS_CURRENT_BINARY: /tmp/darkls-current-bin
+        run: |
+          python3 tests/integration/test_installer.py
+          python3 tests/integration/test_ota.py
+          python3 tests/integration/test_recovery_mode.py

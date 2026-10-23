@@ -1,0 +1,31 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH});
+ const page=await browser.newPage(),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ let pending=true,attempts=0;
+ await page.route('**/api/status',r=>r.fulfill({json:{recovery_pending:pending,active:false,disabled:false,probe:{}}}));
+ await page.route('**/api/recovery',r=>{
+  assert.equal(r.request().postDataJSON().password,'retry-password');
+  attempts++;
+  if(attempts===1)return r.fulfill({status:409,json:{error:'USB пока недоступна'}});
+  pending=false;return r.fulfill({json:{ok:true}});
+ });
+ await page.goto('http://127.0.0.1:18088');
+ await page.locator('#login-form input[name=password]').fill('preview-password');
+ await page.locator('#login-form button').click();
+ await page.locator('#recovery-warning:not(.hidden)').waitFor();
+ await page.locator('[data-view=stability]').click();
+ await page.locator('#tab-stability-recovery').click();
+ const password=page.getByLabel('Пароль для завершения восстановления');
+ const retry=page.getByRole('button',{name:'Повторить восстановление',exact:true});
+ await password.fill('retry-password');await retry.click();
+ await page.getByText('USB пока недоступна',{exact:true}).waitFor();
+ assert.equal(await password.inputValue(),'');
+ await password.fill('retry-password');await retry.click();
+ await page.locator('#recovery-warning.hidden').waitFor({state:'attached'});
+ assert.equal(await password.inputValue(),'');assert.equal(attempts,2);
+ assert.deepEqual(errors,[]);await browser.close();
+ console.log('PASS: recovery banner, failed/successful retry, password clearing and restored status');
+})().catch(e=>{console.error(e);process.exit(1)});
