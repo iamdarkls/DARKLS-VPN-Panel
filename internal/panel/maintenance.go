@@ -119,10 +119,12 @@ func (s *Server) checkRouter() error {
 		return e
 	}
 	// Random names avoid a stale positive DNS-cache entry hiding a dead upstream.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	for _, address := range []string{"127.0.0.1:1053", "127.0.0.1:10535"} {
+		// Each inlet gets its own budget; the second must not inherit a
+		// nearly expired deadline from a slow response on the first.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_, e := lookupRouterDNS(ctx, address, token()[:12]+".example.com")
+		cancel()
 		if de, ok := e.(*net.DNSError); ok && de.IsNotFound {
 			continue
 		}

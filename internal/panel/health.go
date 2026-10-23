@@ -57,12 +57,12 @@ func newProbeClient(proxy *url.URL, roots *x509.CertPool) (*http.Client, *http.T
 		Proxy:               http.ProxyURL(proxy),
 		DialContext:         (&net.Dialer{Timeout: 4 * time.Second}).DialContext,
 		TLSClientConfig:     &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout: 5 * time.Second,
+		TLSHandshakeTimeout: 8 * time.Second,
 		DisableKeepAlives:   true,
 	}
 	client := &http.Client{
 		Transport:     transport,
-		Timeout:       8 * time.Second,
+		Timeout:       12 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return client, transport

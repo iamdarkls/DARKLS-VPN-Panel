@@ -291,6 +291,8 @@ func pseudonym(s string) string {
 	return "addr-" + hex.EncodeToString(h[:4])
 }
 func (s *Server) report() []byte {
+	var recovery recoverySnapshot
+	_ = readJSON(s.runtimePath("last-recovery.json"), &recovery)
 	c := s.collectConnectivity(true)
 	s.saveConnectivity(c)
 	cfg, _ := s.readVPNConfig()
@@ -308,6 +310,7 @@ func (s *Server) report() []byte {
 		rules[x[1]] = s.expandedChain(x[0], x[1])
 	}
 	out := map[string]any{"activity": s.activity(), "format": 1, "panel_version": version, "xray_version": string(v), "created_at": time.Now().UTC(), "connectivity": c, "probe": readProbeState(), "metrics": s.metrics(), "profile": s.profileStatus(), "transport": map[string]string{"protocol": protocol, "network": network}, "rules": rules, "services": s.serviceHistory(), "events": readEvents(), "logs": map[string]string{"watch": tailLog("/tmp/darkls-watch.log"), "xray": errorLines(tailLog("/tmp/xray.log")), "dns": errorLines(tailLog("/tmp/dnsmasq-vpn.log"))}, "privacy": "Конфиг, пароли, VPN-ключи и cookies не включены. IP/MAC псевдонимизированы. Список посещённых сайтов не выгружается; выбранные проверки сервисов остаются."}
+	out["last_recovery"] = recovery
 	data := s.scrub(string(jsonBytes(out)))
 	data = reportMAC.ReplaceAllStringFunc(data, pseudonym)
 	data = reportIP.ReplaceAllStringFunc(data, pseudonym)

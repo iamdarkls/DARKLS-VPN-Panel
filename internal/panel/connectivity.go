@@ -119,7 +119,7 @@ func checkDirectInternet(ctx context.Context) error {
 	return nil
 }
 func testDNS(address string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, e := lookupRouterDNS(ctx, address, token()[:12]+".example.com")
 	if de, ok := e.(*net.DNSError); ok && de.IsNotFound {
@@ -199,6 +199,7 @@ func (s *Server) recoverComponents(reason string) error {
 	defer func() { s.saveConnectivity(c) }()
 	// Structural repairs do not depend on WAN or clock readiness at boot.
 	if len(s.mainXrayPIDs()) == 0 {
+		s.captureRecovery(c, "Процесс Xray отсутствует: "+reason)
 		if e := s.startMainXray(); e != nil {
 			c.Errors["xray"] = s.scrub(e.Error())
 			return e
@@ -207,6 +208,7 @@ func (s *Server) recoverComponents(reason string) error {
 	}
 	c.Xray = true
 	if !pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf") || testDNS("127.0.0.1:10535") != nil {
+		s.captureRecovery(c, "Восстановление DNS helper: "+reason)
 		if out, e := s.run("sh", filepath.Join(s.dir, "reload-dns.sh")); e != nil {
 			c.Errors["local_dns"] = s.scrub(string(out))
 			return errors.New("не удалось восстановить DNS helper")
@@ -216,6 +218,7 @@ func (s *Server) recoverComponents(reason string) error {
 	c.DNSProcess = true
 	c.LocalDNS = true
 	if e := s.checkRoutingOnly(); e != nil {
+		s.captureRecovery(c, "Восстановление правил: "+reason)
 		if e = s.syncGroupRouting(); e != nil {
 			c.Errors["rules"] = s.scrub(e.Error())
 			return e
@@ -235,11 +238,30 @@ func (s *Server) recoverComponents(reason string) error {
 	c = s.collectConnectivity(true)
 	if c.TunnelHTTPS {
 		if shouldRestartTunnel(c) {
+			// An upstream DNS delay is not proof that Xray is stuck. Give DNS
+			// two fresh attempts, then recheck HTTPS before interrupting clients.
+			confirmed, failures := confirmTunnelDNSFailure(func() error {
+				return testDNS("127.0.0.1:1053")
+			}, checkVPNConnection, func() { time.Sleep(2 * time.Second) })
+			if !confirmed {
+				if len(failures) < 2 {
+					c.TunnelDNS = true
+					delete(c.Errors, "tunnel_dns")
+					appendEvent("dns_retry", "DNS через Xray ответил при повторной проверке; перезапуск отменён")
+				} else {
+					c.TunnelHTTPS = false
+					c.Errors["tunnel_https"] = "Повторная HTTPS-проверка тоже не прошла"
+					appendEvent("dns_retry", "Повторная HTTPS-проверка не прошла; отдельное восстановление DNS отложено до проверки туннеля")
+				}
+				return nil
+			}
+			c.Errors["tunnel_dns_confirmation"] = s.scrub(strings.Join(failures, "; "))
+			s.captureRecovery(c, "Подтверждён повторный отказ DNS через Xray при рабочем HTTPS")
 			if e := s.restartMainXray(); e != nil {
 				return e
 			}
-			c.Actions = append(c.Actions, "Восстановлен DNS-вход Xray; перезапущен только Xray")
-			recordRecovery("Не отвечал DNS-вход Xray при исправном HTTPS")
+			c.Actions = append(c.Actions, "Перезапущен Xray после повторного отказа DNS через туннель")
+			recordRecovery("Повторно не отвечал DNS через Xray при рабочем HTTPS; Xray перезапущен")
 		}
 		return nil
 	}
@@ -248,6 +270,7 @@ func (s *Server) recoverComponents(reason string) error {
 		return nil
 	}
 	prefs := s.preferences()
+	s.captureRecovery(c, reason)
 	if prefs.AutoFailover && s.backupConfigured() {
 		if e := s.failover(); e == nil {
 			c.Actions = append(c.Actions, "Переключено на проверенный резерв")
