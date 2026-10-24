@@ -16,17 +16,26 @@ import (
 const probeStatePath = "/tmp/darkls-probe-state.json"
 const eventsPath = "/tmp/darkls-events.jsonl"
 
+type RecoveryConfirmation struct {
+	At    int64  `json:"at"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+func recoveryVerified(p ProbeState) bool { return p.Confirmation == nil || p.Confirmation.OK }
+
 type ProbeState struct {
-	OK             bool   `json:"ok"`
-	CheckedAt      int64  `json:"checked_at"`
-	LastSuccess    int64  `json:"last_success"`
-	LastFailure    int64  `json:"last_failure"`
-	Failures       int    `json:"failures"`
-	Recoveries     int    `json:"recoveries"`
-	LastRecovery   int64  `json:"last_recovery"`
-	RecoveryReason string `json:"recovery_reason"`
-	DurationMS     int64  `json:"duration_ms"`
-	Error          string `json:"error,omitempty"`
+	Confirmation   *RecoveryConfirmation `json:"confirmation,omitempty"`
+	OK             bool                  `json:"ok"`
+	CheckedAt      int64                 `json:"checked_at"`
+	LastSuccess    int64                 `json:"last_success"`
+	LastFailure    int64                 `json:"last_failure"`
+	Failures       int                   `json:"failures"`
+	Recoveries     int                   `json:"recoveries"`
+	LastRecovery   int64                 `json:"last_recovery"`
+	RecoveryReason string                `json:"recovery_reason"`
+	DurationMS     int64                 `json:"duration_ms"`
+	Error          string                `json:"error,omitempty"`
 }
 type Event struct {
 	At      int64  `json:"at"`
@@ -98,11 +107,36 @@ func recordRecovery(reason string) {
 	p.Recoveries++
 	p.LastRecovery = time.Now().Unix()
 	p.RecoveryReason = redact(reason)
+	p.Confirmation = &RecoveryConfirmation{At: p.LastRecovery, Error: "Проверяем DNS, правила и HTTPS после восстановления"}
 	_ = atomicWrite(probeStatePath, jsonBytes(p))
 	if time.Now().Year() >= 2025 {
 		appendHistory(probeHistoryPath, ProbeSample{At: p.LastRecovery, Kind: "recovery", Reason: p.RecoveryReason})
 	}
 	appendEvent("recovery", "Восстановление VPN: "+redact(reason))
+}
+
+// A fresh HTTPS result alone cannot erase a failed DNS/rules postcondition.
+// Legacy state without a confirmation remains compatible after an upgrade.
+func recordRecoveryConfirmation(err error) bool {
+	release, e := tmpLock("/tmp/darkls-probe-state.lock")
+	if e != nil {
+		return false
+	}
+	defer release()
+	p := readProbeState()
+	if p.Confirmation == nil {
+		return false
+	}
+	next := &RecoveryConfirmation{At: time.Now().Unix(), OK: err == nil}
+	if err != nil {
+		next.Error = redact(err.Error())
+	}
+	changed := p.Confirmation.OK != next.OK || p.Confirmation.Error != next.Error
+	p.Confirmation = next
+	if e := atomicWrite(probeStatePath, jsonBytes(p)); e != nil {
+		return false
+	}
+	return changed
 }
 
 var secretUUID = regexp.MustCompile(`(?i)[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}`)

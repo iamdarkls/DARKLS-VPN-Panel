@@ -58,6 +58,7 @@ func (s *Server) confirmRecovery(c *Connectivity, reason string) error {
 	}, reason)
 	if err != nil {
 		c.Errors["confirmation"] = s.scrub(err.Error())
+		recordRecoveryConfirmation(fmt.Errorf("%s", c.Errors["confirmation"]))
 		appendEvent("recovery_unconfirmed", s.scrub(err.Error()))
 		return err
 	}
@@ -65,6 +66,7 @@ func (s *Server) confirmRecovery(c *Connectivity, reason string) error {
 		delete(c.Errors, key)
 	}
 	c.Complete = true
+	recordRecoveryConfirmation(nil)
 	appendEvent("recovery_confirmed", "DNS, правила и HTTPS подтверждены после восстановления: "+strings.Join(c.Actions, "; "))
 	return nil
 }

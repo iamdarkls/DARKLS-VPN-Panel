@@ -111,14 +111,23 @@ func (m *Monitor) tick(parent context.Context) {
 	}
 	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	scoped := s.networkOperation(ctx)
-	reason, structural := m.observe(ctx, now, scoped.quickHealth, scoped.checkRouter, func() error {
+	routerVerified, httpsVerified := false, false
+	reason, structural := m.observe(ctx, now, scoped.quickHealth, func() error {
+		err := scoped.checkRouter()
+		routerVerified = err == nil
+		return err
+	}, func() error {
 		started := time.Now()
 		err := checkVPNConnectionContext(ctx)
+		httpsVerified = err == nil
 		if ctx.Err() == nil {
 			recordProbe(err, time.Since(started))
 		}
 		return err
 	})
+	if ctx.Err() == nil && routerVerified && httpsVerified && recordRecoveryConfirmation(nil) {
+		appendEvent("recovery_confirmed", "DNS, правила и HTTPS снова подтверждены автоконтролем")
+	}
 	cancel()
 	s.diagnosticMu.Unlock()
 	cooldown := 180 * time.Second
@@ -206,7 +215,7 @@ func readMonitorHeartbeat(path string) map[string]any {
 	if err == nil && len(fields) == 2 && fields[0] == strconv.Itoa(os.Getpid()) {
 		completed, e := strconv.ParseInt(fields[1], 10, 64)
 		age := bootSeconds() - completed
-		fresh = e == nil && age >= 0 && age <= 240
+		fresh = e == nil && completed > 0 && age >= 0 && age <= 240
 	}
 	return map[string]any{"fresh": fresh, "grace_seconds": 240}
 }

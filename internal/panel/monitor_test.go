@@ -113,3 +113,32 @@ func TestRuleComparisonPreservesArgumentOwnership(t *testing.T) {
 		t.Fatal("equivalent listing rejected")
 	}
 }
+
+func TestFailedRepairCannotReuseOldGreenHTTPS(t *testing.T) {
+	old, err := os.ReadFile(probeStatePath)
+	t.Cleanup(func() {
+		if err == nil {
+			_ = os.WriteFile(probeStatePath, old, 0600)
+		} else {
+			_ = os.Remove(probeStatePath)
+		}
+	})
+	if e := atomicWrite(probeStatePath, jsonBytes(ProbeState{OK: true, CheckedAt: time.Now().Unix()})); e != nil {
+		t.Fatal(e)
+	}
+	if !recoveryVerified(readProbeState()) {
+		t.Fatal("legacy probe blocked on upgrade")
+	}
+	recordRecovery("DNS helper restarted")
+	if recoveryVerified(readProbeState()) {
+		t.Fatal("pending verification accepted")
+	}
+	recordRecoveryConfirmation(errors.New("DNS not responding"))
+	recordProbe(nil, time.Millisecond)
+	if recoveryVerified(readProbeState()) {
+		t.Fatal("HTTPS erased failed DNS verification")
+	}
+	if !recordRecoveryConfirmation(nil) || !recoveryVerified(readProbeState()) {
+		t.Fatal("verified repair not accepted")
+	}
+}

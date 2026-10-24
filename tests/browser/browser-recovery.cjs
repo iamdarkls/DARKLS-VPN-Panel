@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
  const page=await browser.newPage(),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  let pending=true,attempts=0;
- await page.route('**/api/status',r=>r.fulfill({json:{recovery_pending:pending,active:false,disabled:false,probe:{}}}));
+ await page.route('**/api/status',r=>r.fulfill({json:{recovery_pending:pending,active:false,disabled:false,recovery_confirmation:{ok:false,error:"DNS после восстановления не подтверждён"},probe:{}}}));
  await page.route('**/api/recovery',r=>{
   assert.equal(r.request().postDataJSON().password,'retry-password');
   attempts++;
@@ -16,6 +16,7 @@ const assert=require('node:assert/strict');
  await page.locator('#login-form input[name=password]').fill('preview-password');
  await page.locator('#login-form button').click();
  await page.locator('#recovery-warning:not(.hidden)').waitFor();
+ assert.equal(await page.locator('#vpn-desc').textContent(),'DNS после восстановления не подтверждён');
  await page.locator('[data-view=stability]').click();
  await page.locator('#tab-stability-recovery').click();
  const password=page.getByLabel('Пароль для завершения восстановления');

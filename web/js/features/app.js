@@ -305,7 +305,7 @@ async function status() {
       'Маршрутизация выключена' : s.routes ? 'Маршруты подняты, проверяем соединение' :
       'Маршрутизация восстанавливается';
     $('vpn-desc').textContent = active ? 'Последняя успешная HTTPS-проверка: ' + stamp(s.probe
-        ?.last_success) : s.disabled ? 'Сайты открываются через обычное подключение.' : s.probe?.error ||
+        ?.last_success) : s.disabled ? 'Сайты открываются через обычное подключение.' : s.recovery_confirmation?.error || s.probe?.error ||
       'Ожидаем свежую HTTPS-проверку автоконтроля.';
     $('power').textContent = s.disabled ? 'Включить VPN' : 'Выключить VPN';
     $('power').dataset.enabled = String(!s.disabled);

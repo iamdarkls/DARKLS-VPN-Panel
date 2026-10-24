@@ -586,7 +586,7 @@ func (s *Server) coreLoop(ctx context.Context) {
 // to the worker only after the daily attempt has been durably recorded.
 func (s *Server) tryAutoCore(p CoreSettings, st CoreStatus, now time.Time) {
 	probe := readProbeState()
-	healthy := probe.OK && probeFresh(probe, now) && !s.disabled()
+	healthy := probe.OK && recoveryVerified(probe) && probeFresh(probe, now) && !s.disabled()
 	if !autoCoreDue(p, st, now, healthy) || coreJobActive(s.coreJob()) || runtime.GOARCH != "arm64" || !s.mutation.TryLock() {
 		return
 	}
