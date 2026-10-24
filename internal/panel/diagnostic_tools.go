@@ -3,6 +3,7 @@ package panel
 import (
 	"context"
 	"crypto/sha256"
+	"darkls-panel/internal/routerenv"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -115,7 +116,7 @@ func (s *Server) dependencies(ctx context.Context, id string) (map[string]any, e
 			}
 		}
 		dnsCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		ips, e := lookupRouterDNS(dnsCtx, "127.0.0.1:10535", host)
+		ips, e := lookupRouterDNS(dnsCtx, routerenv.HelperDNS, host)
 		cancel()
 		addresses := []string{}
 		inSet := false
@@ -291,6 +292,11 @@ func pseudonym(s string) string {
 	return "addr-" + hex.EncodeToString(h[:4])
 }
 func (s *Server) report() []byte {
+	ctx, cancel := context.WithTimeout(s.networkContext(), 60*time.Second)
+	defer cancel()
+	return s.networkOperation(ctx).reportWithin()
+}
+func (s *Server) reportWithin() []byte {
 	var recovery recoverySnapshot
 	_ = readJSON(s.runtimePath("last-recovery.json"), &recovery)
 	c := s.collectConnectivity(true)

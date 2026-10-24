@@ -1,4 +1,4 @@
-name: Test
+name: Test and release
 on:
   push:
     branches: [main]
@@ -6,5 +6,28 @@ on:
 permissions:
   contents: read
 jobs:
+  release-plan:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      publish: ${{ steps.diff.outputs.publish }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if git diff --name-only "$BEFORE" "$GITHUB_SHA" -- release-version.txt | grep -q .; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          fi
   test:
     uses: ./.github/workflows/validate.yml
+  release:
+    needs: [test, release-plan]
+    if: github.event_name == 'push' && needs.release-plan.outputs.publish == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    secrets: inherit

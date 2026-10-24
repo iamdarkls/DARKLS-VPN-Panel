@@ -1,9 +1,11 @@
 package panel
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"darkls-panel/assets"
+	"darkls-panel/internal/routerenv"
 	"fmt"
 	"io"
 	"net"
@@ -24,9 +26,16 @@ type probeTarget struct {
 }
 
 func probeTargets(client *http.Client, targets []probeTarget) error {
+	return probeTargetsContext(context.Background(), client, targets)
+}
+func probeTargetsContext(ctx context.Context, client *http.Client, targets []probeTarget) error {
 	var failures []string
 	for _, target := range targets {
-		resp, err := client.Get(target.url)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.url, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", target.url, err))
 			continue
@@ -42,11 +51,16 @@ func probeTargets(client *http.Client, targets []probeTarget) error {
 }
 
 func checkVPNConnection() error {
-	proxy, _ := url.Parse("socks5h://127.0.0.1:10808")
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	return checkVPNConnectionContext(ctx)
+}
+func checkVPNConnectionContext(ctx context.Context) error {
+	proxy, _ := url.Parse("socks5h://" + routerenv.SOCKSAddress)
 	roots := sharedRoots()
 	client, transport := newProbeClient(proxy, roots)
 	defer transport.CloseIdleConnections()
-	return probeTargets(client, []probeTarget{
+	return probeTargetsContext(ctx, client, []probeTarget{
 		{"https://www.gstatic.com/generate_204", 204, ""},
 		{"https://www.cloudflare.com/cdn-cgi/trace", 200, "\nip="},
 	})

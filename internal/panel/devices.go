@@ -2,6 +2,7 @@ package panel
 
 import (
 	"crypto/sha256"
+	"darkls-panel/internal/routerenv"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -71,7 +72,7 @@ func validatePolicy(p *DevicePolicy) error {
 }
 func validLANIP(ip string) bool {
 	a, e := netip.ParseAddr(ip)
-	return e == nil && a.Is4() && netip.MustParsePrefix("192.168.50.0/24").Contains(a) && ip != "192.168.50.0" && ip != "192.168.50.1" && ip != "192.168.50.255"
+	return e == nil && a.Is4() && netip.MustParsePrefix(routerenv.LANPrefix).Contains(a) && ip != routerenv.LANNetwork && ip != routerenv.LANAddress && ip != routerenv.LANBroadcast
 }
 func parseLANDevices(leases, arp string) []LANDevice {
 	byMAC := map[string]LANDevice{}
@@ -103,7 +104,7 @@ func parseLANDevices(leases, arp string) []LANDevice {
 	}
 	for _, line := range strings.Split(arp, "\n") {
 		f := strings.Fields(line)
-		if len(f) < 6 || f[5] != "br0" || !validLANIP(f[0]) {
+		if len(f) < 6 || f[5] != routerenv.LANInterface || !validLANIP(f[0]) {
 			continue
 		}
 		flags, err := strconv.ParseUint(f[2], 0, 32)

@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"darkls-panel/internal/routerenv"
 	"errors"
 	"fmt"
 	"net"
@@ -53,7 +54,7 @@ func (s *Server) diagnose(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	dnsAddress := "127.0.0.1:10535"
+	dnsAddress := routerenv.HelperDNS
 	if s.disabled() {
 		dnsAddress = "127.0.0.1:53"
 	}
@@ -87,7 +88,7 @@ func (s *Server) diagnose(w http.ResponseWriter, r *http.Request) {
 			eligible = !eligible
 		}
 	}
-	_, hookErr := s.run("iptables", "-t", "nat", "-C", "PREROUTING", "-i", "br0", "-s", "192.168.50.0/24", "-j", "DV_NAT")
+	_, hookErr := s.run("iptables", "-t", "nat", "-C", "PREROUTING", "-i", routerenv.LANInterface, "-s", routerenv.LANPrefix, "-j", "DV_NAT")
 	natRules := []byte(s.expandedChain("nat", "DV_NAT"))
 	routesActive := hookErr == nil
 	rows := []map[string]any{}

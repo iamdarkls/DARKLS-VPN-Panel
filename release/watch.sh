@@ -1,92 +1,60 @@
 #!/bin/sh
-# DARKLS_PANEL_INTEGRATION v1
-# DARKLS_VPN_HTTPS_MONITOR v1
+# DARKLS_PANEL_INTEGRATION v2
+# DARKLS_VPN_HTTPS_MONITOR v2 (probes run inside the panel)
 trap '' HUP
-LOCK=/tmp/darkls-watch.lock
-mkdir "$LOCK" 2>/dev/null || exit 0
-echo $$ > /tmp/darkls-watch.pid
-trap 'rm -f /tmp/darkls-watch.pid; rmdir "$LOCK"' 0
-trap 'exit 0' TERM INT
+umask 077
 BASE=/jffs/xray
-BIN=$BASE/panel/darkls-panel
-failures=0
-last_probe=0
-last_recovery=-180
-last_deep=0
-last_dns_failure=0
-last_maintenance=-60
+LOCK=/tmp/darkls-watch.lock
+PID=/tmp/darkls-watch.pid
+HEARTBEAT=/tmp/darkls-monitor-heartbeat
 
-healthy() {
-  REASON='Xray process missing'
-  pidof xray >/dev/null || return 1
-  REASON='VPN DNS process missing'
-  [ -s /tmp/dnsmasq-vpn.pid ] || return 1
-  dns_pid=$(cat /tmp/dnsmasq-vpn.pid)
-  kill -0 "$dns_pid" 2>/dev/null || return 1
-  grep -q 'dnsmasq-vpn.conf' "/proc/$dns_pid/cmdline" || return 1
-  REASON='NAT hook missing'
-  iptables -t nat -C PREROUTING -i br0 -s 192.168.50.0/24 -j DV_NAT 2>/dev/null || return 1
-  REASON='UDP hook missing'
-  iptables -t mangle -C PREROUTING -i br0 -s 192.168.50.0/24 -j DV_UDP 2>/dev/null || return 1
-  REASON='INPUT hook missing'
-  iptables -t filter -C INPUT -i br0 -s 192.168.50.0/24 -j DV_IN 2>/dev/null || return 1
-  REASON='Policy rule missing'
-  ip rule show | grep -q 'fwmark 0x1000000/0x1000000.*lookup 100' || return 1
-  REASON='Local route missing'
-  ip route show table 100 | grep -q '^local default.*dev lo' || return 1
+owner_running() {
+  [ -s "$PID" ] || return 1
+  owner=$(cat "$PID")
+  case "$owner" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$owner" 2>/dev/null || return 1
+  grep -q '/jffs/xray/watch.sh' "/proc/$owner/cmdline" 2>/dev/null
 }
-
-recover() {
-  date
-  echo "Checking failed VPN components: $REASON"
-  "$BIN" --watch-recover --reason "$REASON" || echo 'Recovery failed; will retry'
-  last_recovery=$(awk '{print int($1)}' /proc/uptime)
-  last_probe=$last_recovery
-  failures=0
+# An unclean shutdown can leave an empty directory, but no kernel-owned PID.
+# Recheck after a short grace to avoid stealing a newly starting watcher's lock.
+if ! mkdir "$LOCK" 2>/dev/null; then
+  owner_running && exit 0
+  sleep 1
+  owner_running && exit 0
+  rmdir "$LOCK" 2>/dev/null || exit 1
+  mkdir "$LOCK" 2>/dev/null || exit 0
+fi
+echo $$ > "$PID"
+cleanup() {
+  if [ "$(cat "$PID" 2>/dev/null)" = "$$" ]; then
+    rm -f "$PID"
+    rmdir "$LOCK" 2>/dev/null || true
+  fi
 }
-
+trap cleanup 0
+trap 'exit 0' TERM INT
+seen_pid=
+seen_at=0
 while :; do
   sh "$BASE/panel/service.sh" ensure
   now=$(awk '{print int($1)}' /proc/uptime)
-  # Log limits need one pass per minute, not another Go process every tick.
-  if [ $((now - last_maintenance)) -ge 60 ]; then
-    "$BIN" --maintain-logs
-    last_maintenance=$now
+  panel_pid=$(cat /tmp/darkls-panel.pid 2>/dev/null)
+  case "$panel_pid" in ''|*[!0-9]*) panel_pid= ;; esac
+  if [ "$panel_pid" != "$seen_pid" ]; then seen_pid=$panel_pid; seen_at=$now; fi
+  completed=$seen_at
+  if [ -n "$panel_pid" ] && [ -s "$HEARTBEAT" ]; then
+    read -r heartbeat_pid heartbeat_at < "$HEARTBEAT"
+    case "$heartbeat_at" in ''|*[!0-9]*) heartbeat_at=0 ;; esac
+    if [ "$heartbeat_pid" = "$panel_pid" ] && [ "$heartbeat_at" -le "$now" ]; then completed=$heartbeat_at; fi
   fi
-  if [ -f "$BASE/autostart.disabled" ]; then
-    failures=0
-  elif ! healthy; then
-    # Boot-time firewall rebuilds must be repaired promptly.
-    if [ $((now - last_recovery)) -ge 15 ]; then recover; fi
-  elif [ $((now - last_deep)) -ge 60 ]; then
-    last_deep=$now
-    if "$BIN" --check-router > /tmp/darkls-router-probe.log 2>&1; then
-      last_dns_failure=0
-    else
-      date; cat /tmp/darkls-router-probe.log
-      # Require two failed deep checks; a temporary upstream DNS failure is not
-      # enough to interrupt working connections. Structural repairs stay prompt.
-      if [ "$last_dns_failure" -eq 1 ] && [ $((now - last_recovery)) -ge 180 ]; then
-        REASON=$(head -n 1 /tmp/darkls-router-probe.log)
-        recover
-        last_dns_failure=0
-      else last_dns_failure=1; fi
-    fi
-  elif [ $((now - last_probe)) -ge 30 ] && [ "$(date +%Y)" -ge 2025 ]; then
-    last_probe=$now
-    if "$BIN" --check-vpn > /tmp/darkls-vpn-probe.log 2>&1; then
-      if [ "$failures" -gt 0 ]; then date; echo 'VPN HTTPS recovered'; fi
-      failures=0
-    else
-      failures=$((failures + 1))
+  # A check plus bounded recovery may take up to 195 seconds. Never confuse
+  # a slow network check with a hung panel; allow a full four-minute grace.
+  if [ -n "$panel_pid" ] && [ $((now - completed)) -gt 240 ]; then
+    if grep -q '/jffs/xray/panel/darkls-panel' "/proc/$panel_pid/cmdline" 2>/dev/null; then
       date
-      echo "VPN HTTPS failed, consecutive checks: $failures"
-      cat /tmp/darkls-vpn-probe.log
-      if [ "$failures" -eq 1 ]; then "$BIN" --check-components > /tmp/darkls-components.log 2>&1; fi
-      if [ "$failures" -ge 2 ] && [ $((now - last_recovery)) -ge 180 ]; then
-        REASON='HTTPS traffic failed on both probe destinations twice'
-        recover
-      fi
+      echo 'Panel monitor heartbeat expired; restarting panel only'
+      kill "$panel_pid" 2>/dev/null || true
+      seen_at=$now
     fi
   fi
   sleep 15

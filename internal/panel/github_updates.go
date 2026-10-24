@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"darkls-panel/assets"
+	"darkls-panel/internal/routerenv"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -108,7 +109,7 @@ func githubHTTPClient(proxy bool) *http.Client {
 		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "tcp4", address)
 	}, TLSHandshakeTimeout: 7 * time.Second, DisableKeepAlives: true}
 	if proxy {
-		p, _ := url.Parse("socks5h://127.0.0.1:10808")
+		p, _ := url.Parse("socks5h://" + routerenv.SOCKSAddress)
 		tr.Proxy = http.ProxyURL(p)
 	}
 	return &http.Client{Transport: tr, Timeout: 45 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error {

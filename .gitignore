@@ -7,7 +7,7 @@
 *.key
 *.private
 .env
-/node_modules/
+node_modules/
 /config*.json
 /auth.json
 /state.json

@@ -3,6 +3,7 @@ package panel
 import (
 	"context"
 	"crypto/subtle"
+	"darkls-panel/internal/routerenv"
 	"darkls-panel/web"
 	"encoding/json"
 	"errors"
@@ -49,7 +50,7 @@ func (s *Server) allowedIP(r *http.Request) bool {
 	if e != nil {
 		return false
 	}
-	return ip.IsLoopback() || netip.MustParsePrefix("192.168.50.0/24").Contains(ip.Unmap())
+	return ip.IsLoopback() || netip.MustParsePrefix(routerenv.LANPrefix).Contains(ip.Unmap())
 }
 
 func (s *Server) handler() http.Handler {
@@ -300,14 +301,14 @@ func (s *Server) status(w http.ResponseWriter) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	check := func(name string, args ...string) bool { _, e := s.runner.Run(ctx, name, args...); return e == nil }
-	nat := check("iptables", "-t", "nat", "-C", "PREROUTING", "-i", "br0", "-s", "192.168.50.0/24", "-j", "DV_NAT")
-	udp := check("iptables", "-t", "mangle", "-C", "PREROUTING", "-i", "br0", "-s", "192.168.50.0/24", "-j", "DV_UDP")
+	nat := check("iptables", "-t", "nat", "-C", "PREROUTING", "-i", routerenv.LANInterface, "-s", routerenv.LANPrefix, "-j", "DV_NAT")
+	udp := check("iptables", "-t", "mangle", "-C", "PREROUTING", "-i", routerenv.LANInterface, "-s", routerenv.LANPrefix, "-j", "DV_UDP")
 	xray := len(s.mainXrayPIDsContext(ctx)) > 0
 	dns := pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf")
 	watch := pidMatches("/tmp/darkls-watch.pid", "/jffs/xray/watch.sh")
 	probe := readProbeState()
 	fresh := probeFresh(probe, time.Now())
-	respond(w, 200, map[string]any{"recovery_pending": s.pendingRecovery(), "active": nat && udp && xray && dns && !s.disabled() && probe.OK && fresh, "routes": nat && udp && xray && dns, "disabled": s.disabled(), "nat": nat, "udp": udp, "xray": xray, "dns": dns, "watch": watch, "version": version, "probe": probe, "probe_fresh": fresh})
+	respond(w, 200, map[string]any{"recovery_pending": s.pendingRecovery(), "active": nat && udp && xray && dns && !s.disabled() && probe.OK && fresh, "routes": nat && udp && xray && dns, "disabled": s.disabled(), "nat": nat, "udp": udp, "xray": xray, "dns": dns, "watch": watch, "monitor": readMonitorHeartbeat(s.runtimePath("monitor-heartbeat")), "version": version, "probe": probe, "probe_fresh": fresh})
 }
 
 // Keep the asset allowlist explicit even though the web package embeds asset directories.

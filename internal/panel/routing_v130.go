@@ -2,6 +2,7 @@ package panel
 
 import (
 	"crypto/sha256"
+	"darkls-panel/internal/routerenv"
 	"encoding/hex"
 	"fmt"
 	"net/netip"
@@ -120,7 +121,7 @@ func buildPolicyRules(st State, reg map[string]string, excludes []string) (nat, 
 		nat = append(nat, r)
 		udp = append(udp, r)
 	}
-	nat = append(nat, firewallRule{"-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", "10535"}, firewallRule{"-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", "10535"})
+	nat = append(nat, firewallRule{"-p", "udp", "--dport", "53", "-j", "REDIRECT", "--to-ports", routerenv.DNSPort}, firewallRule{"-p", "tcp", "--dport", "53", "-j", "REDIRECT", "--to-ports", routerenv.DNSPort})
 	udp = append(udp, firewallRule{"-p", "udp", "--dport", "53", "-j", "RETURN"})
 	for _, p := range excludes {
 		r := firewallRule{"-d", p, "-j", "RETURN"}
@@ -128,8 +129,8 @@ func buildPolicyRules(st State, reg map[string]string, excludes []string) (nat, 
 		udp = append(udp, r)
 	}
 	redirect := func(set string) {
-		nat = append(nat, firewallRule{"-p", "tcp", "-m", "set", "--match-set", set, "dst", "-j", "REDIRECT", "--to-ports", "12345"})
-		udp = append(udp, firewallRule{"-p", "udp", "-m", "set", "--match-set", set, "dst", "-j", "TPROXY", "--on-ip", "127.0.0.1", "--on-port", "12346", "--tproxy-mark", "0x1000000/0x1000000"})
+		nat = append(nat, firewallRule{"-p", "tcp", "-m", "set", "--match-set", set, "dst", "-j", "REDIRECT", "--to-ports", routerenv.TCPPort})
+		udp = append(udp, firewallRule{"-p", "udp", "-m", "set", "--match-set", set, "dst", "-j", "TPROXY", "--on-ip", "127.0.0.1", "--on-port", routerenv.UDPPort, "--tproxy-mark", routerenv.Mark})
 	}
 	active := map[string]bool{}
 	for _, g := range st.Groups {
@@ -163,7 +164,7 @@ func buildPolicyRules(st State, reg map[string]string, excludes []string) (nat, 
 		}
 	}
 	redirect("darkls_vpn")
-	input = append(input, firewallRule{"-p", "udp", "-m", "mark", "--mark", "0x1000000/0x1000000", "-j", "ACCEPT"}, firewallRule{"-p", "udp", "--dport", "10535", "-j", "ACCEPT"}, firewallRule{"-p", "tcp", "-m", "multiport", "--dports", "10535,12345", "-j", "ACCEPT"})
+	input = append(input, firewallRule{"-p", "udp", "-m", "mark", "--mark", routerenv.Mark, "-j", "ACCEPT"}, firewallRule{"-p", "udp", "--dport", routerenv.DNSPort, "-j", "ACCEPT"}, firewallRule{"-p", "tcp", "-m", "multiport", "--dports", routerenv.AcceptedTCPPorts, "-j", "ACCEPT"})
 	return
 }
 
@@ -227,11 +228,11 @@ func (s *Server) syncGroupRouting() error {
 		return fmt.Errorf("TPROXY: %s", limited(out))
 	}
 	_, _ = s.run("modprobe", "ipt_REJECT")
-	if out, e := s.run("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", "100"); e != nil {
+	if out, e := s.run("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", routerenv.RouteTable); e != nil {
 		return fmt.Errorf("маршрут: %s", limited(out))
 	}
-	if out, _ := s.run("ip", "rule", "show"); !strings.Contains(string(out), "fwmark 0x1000000/0x1000000 lookup 100") {
-		if out, e := s.run("ip", "rule", "add", "pref", "10", "fwmark", "0x1000000/0x1000000", "table", "100"); e != nil {
+	if out, _ := s.run("ip", "rule", "show"); !strings.Contains(string(out), "fwmark "+routerenv.Mark+" lookup "+routerenv.RouteTable) {
+		if out, e := s.run("ip", "rule", "add", "pref", "10", "fwmark", routerenv.Mark, "table", routerenv.RouteTable); e != nil {
 			return fmt.Errorf("правило маршрута: %s", limited(out))
 		}
 	}
@@ -243,7 +244,7 @@ func (s *Server) syncGroupRouting() error {
 		if e = s.installBody(v.table, v.top, v.a, v.b, v.rules); e != nil {
 			return e
 		}
-		args := []string{"-t", v.table, "-C", v.hook, "-i", "br0", "-s", "192.168.50.0/24", "-j", v.top}
+		args := []string{"-t", v.table, "-C", v.hook, "-i", routerenv.LANInterface, "-s", routerenv.LANPrefix, "-j", v.top}
 		if _, e = s.run("iptables", args...); e != nil {
 			args[2] = "-I"
 			args = append(args[:4], append([]string{"1"}, args[4:]...)...)

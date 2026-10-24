@@ -101,7 +101,10 @@ func (s *Server) pause() (func(), error) {
 			release()
 			return nil, errors.New("скрипт VPN занят; повторите позже")
 		}
-		time.Sleep(250 * time.Millisecond)
+		if err := waitContext(s.networkContext(), 250*time.Millisecond); err != nil {
+			release()
+			return nil, err
+		}
 	}
 	return release, nil
 }

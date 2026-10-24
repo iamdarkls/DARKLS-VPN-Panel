@@ -79,7 +79,7 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 		defer s.diagnosticMu.Unlock()
 		switch r.URL.Path {
 		case "/api/connectivity":
-			c := s.collectConnectivity(true)
+			c := s.networkOperation(r.Context()).collectConnectivity(true)
 			s.saveConnectivity(c)
 			respond(w, 200, c)
 		case "/api/dependencies":
@@ -252,18 +252,25 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 		switch req.Component {
 		case "auto":
-			e = s.recoverComponents("Ручная диагностика")
+			e = s.networkOperation(r.Context()).recoverComponents("Ручная диагностика")
 		case "dns":
-			_, e = s.run("sh", filepath.Join(s.dir, "reload-dns.sh"))
+			_, e = s.networkOperation(r.Context()).run("sh", filepath.Join(s.dir, "reload-dns.sh"))
 		case "rules":
-			e = s.syncGroupRouting()
+			e = s.networkOperation(r.Context()).syncGroupRouting()
 		case "xray":
-			e = s.restartMainXray()
+			e = s.networkOperation(r.Context()).restartMainXray()
 		default:
 			e = errors.New("неверный компонент")
 		}
+		if e == nil && req.Component != "auto" {
+			ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+			c := Connectivity{Clock: time.Now().Year() >= 2025, Errors: map[string]string{}, Actions: []string{"Ручное действие: " + req.Component}}
+			e = s.networkOperation(ctx).confirmRecovery(&c, "Ручное действие: "+req.Component)
+			cancel()
+			s.saveConnectivity(c)
+		}
 		if e == nil {
-			appendEvent("manual_repair", "Восстановлен компонент: "+req.Component)
+			appendEvent("manual_repair", "Восстановление подтверждено: "+req.Component)
 		}
 	case "/api/profile-save", "/api/profile-switch", "/api/xhttp-apply":
 		var req struct {

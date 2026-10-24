@@ -3,8 +3,8 @@ package panel
 import (
 	"bytes"
 	"context"
+	"darkls-panel/internal/routerexec"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -12,29 +12,21 @@ import (
 	"time"
 )
 
-type Runner interface {
-	Run(context.Context, string, ...string) ([]byte, error)
-}
-
-type realRunner struct{}
-
-func (realRunner) Run(ctx context.Context, name string, args ...string) ([]byte, error) {
-	c := exec.CommandContext(ctx, name, args...)
-	c.Env = append(os.Environ(), "PATH=/usr/sbin:/usr/bin:/sbin:/bin")
-	return c.CombinedOutput()
-}
+type Runner = routerexec.Runner
+type realRunner = routerexec.Real
 
 type Server struct {
 	AuthService
-	root, dir, host string
-	runner          Runner
-	mutation        sync.Mutex
-	diagnosticMu    sync.Mutex
-	metricsMu       sync.Mutex
-	githubMu        sync.Mutex
-	coreMu          sync.Mutex
-	historyMu       sync.Mutex
-	lastCPU         cpuSample
+	root, dir, host  string
+	operationContext context.Context
+	runner           Runner
+	mutation         sync.Mutex
+	diagnosticMu     sync.Mutex
+	metricsMu        sync.Mutex
+	githubMu         sync.Mutex
+	coreMu           sync.Mutex
+	historyMu        sync.Mutex
+	lastCPU          cpuSample
 }
 
 func newServer(root, host string, runner Runner) *Server {
@@ -42,9 +34,21 @@ func newServer(root, host string, runner Runner) *Server {
 }
 
 func (s *Server) run(name string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(s.networkContext(), 40*time.Second)
 	defer cancel()
 	return s.runner.Run(ctx, name, args...)
+}
+
+// networkOperation creates an isolated command scope, never copies mutexes and
+// never starts workers. The caller retains the owning server's mutation locks.
+func (s *Server) networkOperation(ctx context.Context) *Server {
+	return &Server{root: s.root, dir: s.dir, host: s.host, runner: s.runner, operationContext: ctx}
+}
+func (s *Server) networkContext() context.Context {
+	if s.operationContext != nil {
+		return s.operationContext
+	}
+	return context.Background()
 }
 
 func pidMatches(file, match string) bool {

@@ -9,11 +9,15 @@ import (
 
 // A missing process is repaired immediately; an upstream timeout must repeat.
 func dnsFailureConfirmed(probe func() error, wait func()) bool {
- for i:=0; i<3; i++ {
-  if i>0 { wait() }
-  if probe()==nil { return false }
- }
- return true
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			wait()
+		}
+		if probe() == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // Called only after the initial DNS probe failed with working tunnel HTTPS.

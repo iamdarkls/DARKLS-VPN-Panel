@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"darkls-panel/internal/routerenv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -256,7 +257,7 @@ func (s *Server) loadExperiment(ctx context.Context, via string) (map[string]any
 	}
 	address := ""
 	if via == "vpn" {
-		address = "127.0.0.1:10808"
+		address = routerenv.SOCKSAddress
 	}
 	client := transportClient(address)
 	defer client.CloseIdleConnections()

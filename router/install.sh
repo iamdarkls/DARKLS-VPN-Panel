@@ -15,6 +15,8 @@ grep -q 'darkls_yt' "$ROOT/vpn.sh" || { echo 'YouTube fix was not found; install
 grep -q '/jffs/xray/watch.sh' /jffs/scripts/usb-mount-script || { echo 'Unknown USB startup handler'; exit 1; }
 test -s "$PKG/darkls-panel"
 test -s "$PKG/service.sh"
+test -s "$PKG/watch.sh"
+grep -q '^# DARKLS_PANEL_INTEGRATION v2' "$PKG/watch.sh" || { echo 'Use watch.sh from the current signed release'; exit 1; }
 
 mkdir -p "$PANEL"
 chmod 700 "$PANEL"
@@ -30,23 +32,9 @@ cp "$PKG/service.sh" "$PANEL/service.sh"
 chmod 700 "$PANEL/service.sh"
 "$PANEL/darkls-panel" --init
 
-if ! grep -q 'DARKLS_PANEL_INTEGRATION' "$ROOT/watch.sh"; then
-  grep -q 'sh /jffs/xray/vpn.sh start ||' "$ROOT/watch.sh" || { echo 'Unknown watchdog; installation stopped'; exit 1; }
-  awk '
-    NR == 1 { print; print "# DARKLS_PANEL_INTEGRATION v1"; next }
-    /^while :; do$/ {
-      print
-      print "  sh /jffs/xray/panel/service.sh ensure"
-      next
-    }
-    /sh \/jffs\/xray\/vpn.sh start \|\|/ {
-      sub("sh /jffs/xray/vpn.sh start", "/jffs/xray/panel/darkls-panel --watch-recover")
-    }
-    { print }
-  ' "$ROOT/watch.sh" > "$PANEL/watch.sh.new"
-else
-  cp -p "$ROOT/watch.sh" "$PANEL/watch.sh.new"
-fi
+# The native monitor requires its lightweight supervisor; retaining an old
+# probing watcher would run two independent recovery policies.
+cp "$PKG/watch.sh" "$PANEL/watch.sh.new"
 
 cat > "$PANEL/usb-mount-script.new" <<'USBEOF'
 #!/bin/sh

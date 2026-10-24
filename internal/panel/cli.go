@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"darkls-panel/internal/routerenv"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,7 +17,7 @@ import (
 	"time"
 )
 
-var version = "1.8.4"
+var version = "1.9.0"
 
 func tuneRuntime() {
 	// The local control panel has little parallel work. Bound Go's memory target
@@ -30,7 +31,7 @@ func tuneRuntime() {
 func Run() {
 	tuneRuntime()
 	root := flag.String("root", "/jffs/xray", "каталог VPN")
-	listen := flag.String("listen", "192.168.50.1:8088", "адрес панели")
+	listen := flag.String("listen", routerenv.PanelAddress, "адрес панели")
 	initAuth := flag.Bool("init", false, "создать пароль и импортировать списки")
 	reset := flag.Bool("reset-password", false, "создать новый пароль")
 	watchRecover := flag.Bool("watch-recover", false, "восстановить маршрутизацию из автоконтроля")

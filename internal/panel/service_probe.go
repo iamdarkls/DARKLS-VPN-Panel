@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"darkls-panel/internal/routerenv"
 	"errors"
 	"net"
 	"net/http"
@@ -50,13 +51,13 @@ func checkService(ctx context.Context, domain string) ServiceResult {
 	started := time.Now()
 	finish := func(r ServiceResult) ServiceResult { r.DurationMS = time.Since(started).Milliseconds(); return r }
 	dnsCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	_, e := lookupRouterDNS(dnsCtx, "127.0.0.1:10535", domain)
+	_, e := lookupRouterDNS(dnsCtx, routerenv.HelperDNS, domain)
 	cancel()
 	if e != nil {
 		return finish(ServiceResult{Domain: domain, State: "dns_error", Message: "DNS роутера: " + redact(e.Error())})
 	}
 	roots := sharedRoots()
-	proxy, _ := url.Parse("socks5h://127.0.0.1:10808")
+	proxy, _ := url.Parse("socks5h://" + routerenv.SOCKSAddress)
 	client, tr := newProbeClient(proxy, roots)
 	defer tr.CloseIdleConnections()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+domain+"/", nil)

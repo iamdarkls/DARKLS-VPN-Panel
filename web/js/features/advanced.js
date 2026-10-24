@@ -36,9 +36,10 @@ const connectivityBox = box(diagnostics, 'Что именно не отвеча�
   );
 const connectivityResult = output(connectivityBox);
 button(connectivityBox, 'Проверить связь', async () => {
-  connectivityResult.textContent = 'Проверяем, до 40 секунд…';
+  connectivityResult.textContent = 'Проверяем, до 45 секунд…';
   const c = await api('connectivity', 'POST', {});
   const rows = [
+    ['Диагностика', c.complete === false ? 'Не завершена: часть результатов неизвестна' : 'Завершена'],
     ['Часы', c.clock ? 'Синхронизированы' : 'Ожидаем NTP'],
     ['Xray', c.xray],
     ['Процесс DNS helper', c.dns_process],
@@ -56,7 +57,7 @@ button(connectivityBox, 'Проверить связь', async () => {
 const reportLink = el('a', 'secondary download', 'Скачать отчёт о сбое ↓');
 reportLink.href = '/api/report';
 connectivityBox.append(reportLink, el('p', 'tiny muted',
-  'JSON: версии, память, правила, результаты проверок и последние ошибки. Пароли и VPN-ключи исключены, IP и MAC заменены метками. История выбранных проверок остаётся. Сбор может занять до 40 секунд.'
+  'JSON: версии, память, правила, результаты проверок и последние ошибки. Пароли и VPN-ключи исключены, IP и MAC заменены метками. История выбранных проверок остаётся. Сбор может занять до 60 секунд.'
   ));
 const pendingBox = box(recovery, 'Завершить незавершённую операцию', 'Если панель сообщает о режиме восстановления, подключи USB с резервной копией и повтори откат. Другие изменения будут доступны после успешного восстановления.');
 const pendingPassword = field(pendingBox, 'Пароль для завершения восстановления', 'password');
@@ -92,7 +93,7 @@ button(recoveryBox, 'Перезапустить Xray', async () => {
     password: xrayPassword.value
   });
   xrayPassword.value = '';
-  notice('Xray перезапущен. DNS helper и правила сохранены.')
+  notice('Xray перезапущен; DNS, правила и HTTPS проверены.')
 });
 const dependencyBox = box(diagnostics, 'Зависимости сервиса',
   'Проверка известных доменов: DNS, включённая группа и IP в VPN-наборе. HTTPS основной страницы проверяется отдельно. Это проверка с роутера; учётная запись, WebRTC и браузер не проверяются.'

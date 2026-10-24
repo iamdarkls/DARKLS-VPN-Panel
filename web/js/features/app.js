@@ -317,6 +317,7 @@ async function status() {
         ['udp', 'UDP'],
         ['watch', 'Автоконтроль']
       ]) $('checks').append(el('span', 'check' + (s[key] ? '' : ' bad'), (s[key] ? '✓ ' : '○ ') + label));
+    if (s.monitor) $('checks').append(el('span', 'check' + (s.monitor.fresh ? '' : ' bad'), (s.monitor.fresh ? '✓ ' : '○ ') + 'Цикл контроля'));
     $('checks').append(el('span', 'check' + (s.probe_fresh && s.probe?.ok ? '' : ' bad'), (s.probe_fresh &&
       s.probe?.ok ? '✓ ' : '○ ') + 'HTTPS'));
     showProbe(s.probe, s.probe_fresh)

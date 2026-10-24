@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"darkls-panel/internal/routerenv"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -214,9 +215,9 @@ func youtubeDomain(d string) bool {
 
 func dnsConfig(domains []string) []byte {
 	var b strings.Builder
-	b.WriteString("port=10535\nlisten-address=127.0.0.1,192.168.50.1\nbind-interfaces\npid-file=/tmp/dnsmasq-vpn.pid\nno-resolv\nno-hosts\ncache-size=1000\nfilter-AAAA\nserver=127.0.0.1#53\n")
+	fmt.Fprintf(&b, "port=%s\nlisten-address=127.0.0.1,%s\nbind-interfaces\npid-file=/tmp/dnsmasq-vpn.pid\nno-resolv\nno-hosts\ncache-size=1000\nfilter-AAAA\nserver=127.0.0.1#53\n", routerenv.DNSPort, routerenv.LANAddress)
 	for _, d := range domains {
-		fmt.Fprintf(&b, "server=/%s/127.0.0.1#1053\nipset=/%s/darkls_vpn", d, d)
+		fmt.Fprintf(&b, "server=/%s/127.0.0.1#%s\nipset=/%s/darkls_vpn", d, routerenv.TunnelDNSPort, d)
 		if youtubeDomain(d) {
 			b.WriteString(",darkls_yt")
 		}

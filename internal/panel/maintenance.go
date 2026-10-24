@@ -3,6 +3,7 @@ package panel
 import (
 	"bytes"
 	"context"
+	"darkls-panel/internal/routerenv"
 	"fmt"
 	"io"
 	"net"
@@ -76,22 +77,22 @@ func validateRouterRules(nat, udp, input string) error {
 		text  string
 		parts []string
 	}{
-		{nat, []string{"-p udp ", "--dport 53 ", "-j REDIRECT ", "--to-ports 10535"}},
-		{nat, []string{"-p tcp ", "--dport 53 ", "-j REDIRECT ", "--to-ports 10535"}},
+		{nat, []string{"-p udp ", "--dport 53 ", "-j REDIRECT ", "--to-ports " + routerenv.DNSPort}},
+		{nat, []string{"-p tcp ", "--dport 53 ", "-j REDIRECT ", "--to-ports " + routerenv.DNSPort}},
 		{udp, []string{"-p udp ", "--dport 53 ", "-j RETURN"}},
 		{input, []string{"-p udp ", "--dport 443 ", "--match-set darkls_yt dst ", "-j REJECT ", "--reject-with icmp-port-unreachable"}},
-		{input, []string{"-p udp ", "--mark 0x1000000/0x1000000 ", "-j ACCEPT"}},
-		{input, []string{"-p udp ", "--dport 10535 ", "-j ACCEPT"}},
-		{input, []string{"-p tcp ", "--dports 10535,12345 ", "-j ACCEPT"}},
+		{input, []string{"-p udp ", "--mark " + routerenv.Mark + " ", "-j ACCEPT"}},
+		{input, []string{"-p udp ", "--dport " + routerenv.DNSPort + " ", "-j ACCEPT"}},
+		{input, []string{"-p tcp ", "--dports " + routerenv.AcceptedTCPPorts + " ", "-j ACCEPT"}},
 	}
 	for _, set := range []string{"darkls_vpn", "darkls_tg"} {
 		required = append(required, struct {
 			text  string
 			parts []string
-		}{nat, []string{"-p tcp ", "--match-set " + set + " dst ", "-j REDIRECT ", "--to-ports 12345"}}, struct {
+		}{nat, []string{"-p tcp ", "--match-set " + set + " dst ", "-j REDIRECT ", "--to-ports " + routerenv.TCPPort}}, struct {
 			text  string
 			parts []string
-		}{udp, []string{"-p udp ", "--match-set " + set + " dst ", "-j TPROXY ", "--on-port 12346", "--on-ip 127.0.0.1", "--tproxy-mark 0x1000000/0x1000000"}})
+		}{udp, []string{"-p udp ", "--match-set " + set + " dst ", "-j TPROXY ", "--on-port " + routerenv.UDPPort, "--on-ip 127.0.0.1", "--tproxy-mark " + routerenv.Mark}})
 	}
 	for _, r := range required {
 		found := false
@@ -115,14 +116,23 @@ func validateRouterRules(nat, udp, input string) error {
 	return nil
 }
 func (s *Server) checkRouter() error {
+	ctx, cancel := context.WithTimeout(s.networkContext(), 20*time.Second)
+	defer cancel()
+	err := s.networkOperation(ctx).checkRouterWithin()
+	if ctx.Err() != nil {
+		return fmt.Errorf("%w: %v", errDiagnosticIncomplete, ctx.Err())
+	}
+	return err
+}
+func (s *Server) checkRouterWithin() error {
 	if e := s.checkRoutingOnly(); e != nil {
 		return e
 	}
 	// Random names avoid a stale positive DNS-cache entry hiding a dead upstream.
-	for _, address := range []string{"127.0.0.1:1053", "127.0.0.1:10535"} {
+	for _, address := range []string{routerenv.TunnelDNS, routerenv.HelperDNS} {
 		// Each inlet gets its own budget; the second must not inherit a
 		// nearly expired deadline from a slow response on the first.
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(s.networkContext(), 5*time.Second)
 		_, e := lookupRouterDNS(ctx, address, token()[:12]+".example.com")
 		cancel()
 		if de, ok := e.(*net.DNSError); ok && de.IsNotFound {

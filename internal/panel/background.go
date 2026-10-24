@@ -26,6 +26,9 @@ func runPeriodic(ctx context.Context, initial, interval time.Duration, task func
 
 func (s *Server) startBackground(ctx context.Context) {
 	go runPeriodic(ctx, 15*time.Second, 15*time.Second, s.maintenanceTick)
+	if s.root == "/jffs/xray" {
+		go (&Monitor{server: s}).run(ctx)
+	}
 	go s.serviceMonitorLoop(ctx)
 	go s.githubLoop(ctx)
 	go s.coreLoop(ctx)

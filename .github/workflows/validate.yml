@@ -22,14 +22,27 @@ jobs:
       - name: Validate router scripts
         run: |
           for script in router/*.sh release/*.sh; do sh -n "$script"; done
-      - name: Install browser test tools
+      - name: Cache npm and Chromium
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/ms-playwright
+          key: browser-${{ runner.os }}-${{ hashFiles('tools/browser/package-lock.json') }}
+      - name: Install pinned browser tools
         timeout-minutes: 5
+        run: sh tools/ci_retry.sh npm ci --prefix tools/browser --ignore-scripts --no-audit --no-fund
+      - name: Install browser and network test dependencies
+        timeout-minutes: 8
         run: |
-          npm install --prefix /tmp/darkls-browser --no-save --ignore-scripts playwright@1.62.1
-          /tmp/darkls-browser/node_modules/.bin/playwright install --with-deps chromium
+          sh tools/ci_retry.sh tools/browser/node_modules/.bin/playwright install-deps chromium
+          sh tools/ci_retry.sh sudo apt-get install -y --no-install-recommends iptables iproute2
+      - name: Install Chromium
+        timeout-minutes: 8
+        run: sh tools/ci_retry.sh tools/browser/node_modules/.bin/playwright install chromium
       - name: Browser scenarios
         env:
-          NODE_PATH: /tmp/darkls-browser/node_modules
+          NODE_PATH: ${{ github.workspace }}/tools/browser/node_modules
         run: |
           export CHROME_PATH="$(node -p 'require("playwright").chromium.executablePath()')"
           python3 tests/integration/run_browser.py
@@ -47,3 +60,7 @@ jobs:
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_installer.py
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_ota.py
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_recovery_mode.py
+      - name: Three clients through Linux NAT and DNS
+        run: sudo python3 tests/integration/test_network.py
+      - name: Shell supervisor crash recovery
+        run: python3 tests/integration/test_supervisor.py

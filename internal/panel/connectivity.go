@@ -2,6 +2,7 @@ package panel
 
 import (
 	"context"
+	"darkls-panel/internal/routerenv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -28,13 +30,14 @@ type Connectivity struct {
 	ServerTCP      bool              `json:"server_tcp"`
 	TunnelHTTPS    bool              `json:"tunnel_https"`
 	Clock          bool              `json:"clock"`
+	Complete       bool              `json:"complete"`
 	TrafficChecked bool              `json:"traffic_checked"`
 	Errors         map[string]string `json:"errors"`
 	Actions        []string          `json:"actions,omitempty"`
 }
 
 func (s *Server) mainXrayPIDs() []string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(s.networkContext(), 5*time.Second)
 	defer cancel()
 	return s.mainXrayPIDsContext(ctx)
 }
@@ -76,7 +79,9 @@ func (s *Server) startMainXray() error {
 		return e
 	}
 	go cmd.Wait()
-	time.Sleep(300 * time.Millisecond)
+	if err := waitContext(s.networkContext(), 300*time.Millisecond); err != nil {
+		return err
+	}
 	if len(s.mainXrayPIDs()) == 0 {
 		return errors.New("Xray не запустился; см. журнал")
 	}
@@ -87,7 +92,9 @@ func (s *Server) restartMainXray() error {
 		_, _ = s.run("kill", p)
 	}
 	for i := 0; i < 20 && len(s.mainXrayPIDs()) > 0; i++ {
-		time.Sleep(100 * time.Millisecond)
+		if err := waitContext(s.networkContext(), 100*time.Millisecond); err != nil {
+			return err
+		}
 	}
 	if len(s.mainXrayPIDs()) > 0 {
 		return errors.New("Xray не остановился")
@@ -119,7 +126,10 @@ func checkDirectInternet(ctx context.Context) error {
 	return nil
 }
 func testDNS(address string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	return testDNSContext(context.Background(), address)
+}
+func testDNSContext(parent context.Context, address string) error {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	_, e := lookupRouterDNS(ctx, address, token()[:12]+".example.com")
 	if de, ok := e.(*net.DNSError); ok && de.IsNotFound {
@@ -140,22 +150,33 @@ func (s *Server) serverTCP() error {
 	if host == "" || port == 0 {
 		return errors.New("адрес сервера не распознан")
 	}
-	c, e := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), 3*time.Second)
+	c, e := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(s.networkContext(), "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if e == nil {
 		c.Close()
 	}
 	return e
 }
 func (s *Server) collectConnectivity(full bool) Connectivity {
-	c := Connectivity{At: time.Now().Unix(), Clock: time.Now().Year() >= 2025, Errors: map[string]string{}}
+	ctx, cancel := context.WithTimeout(s.networkContext(), 45*time.Second)
+	defer cancel()
+	return s.networkOperation(ctx).collectConnectivityWithin(full)
+}
+func (s *Server) collectConnectivityWithin(full bool) (c Connectivity) {
+	c = Connectivity{At: time.Now().Unix(), Clock: time.Now().Year() >= 2025, Errors: map[string]string{}}
+	defer func() {
+		c.Complete = s.networkContext().Err() == nil && c.Errors["incomplete"] == ""
+		if !c.Complete {
+			c.Errors["incomplete"] = "Общий срок диагностики истёк; отсутствующие результаты неизвестны"
+		}
+	}()
 	c.Xray = len(s.mainXrayPIDs()) > 0
 	c.DNSProcess = pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf")
-	if e := testDNS("127.0.0.1:10535"); e == nil {
+	if e := testDNSContext(s.networkContext(), routerenv.HelperDNS); e == nil {
 		c.LocalDNS = true
 	} else {
 		c.Errors["local_dns"] = s.scrub(e.Error())
 	}
-	if e := testDNS("127.0.0.1:1053"); e == nil {
+	if e := testDNSContext(s.networkContext(), routerenv.TunnelDNS); e == nil {
 		c.TunnelDNS = true
 	} else {
 		c.Errors["tunnel_dns"] = s.scrub(e.Error())
@@ -164,10 +185,13 @@ func (s *Server) collectConnectivity(full bool) Connectivity {
 		c.Rules = true
 	} else {
 		c.Errors["rules"] = s.scrub(e.Error())
+		if errors.Is(e, errDiagnosticIncomplete) {
+			c.Errors["incomplete"] = e.Error()
+		}
 	}
-	if full && c.Clock {
+	if full && c.Clock && s.networkContext().Err() == nil {
 		c.TrafficChecked = true
-		ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+		ctx, cancel := context.WithTimeout(s.networkContext(), 6*time.Second)
 		if e := checkDirectInternet(ctx); e == nil {
 			c.WAN = true
 		} else {
@@ -179,7 +203,7 @@ func (s *Server) collectConnectivity(full bool) Connectivity {
 		} else {
 			c.Errors["server_tcp"] = s.scrub(e.Error())
 		}
-		if e := checkVPNConnection(); e == nil {
+		if e := checkVPNConnectionContext(s.networkContext()); e == nil {
 			c.TunnelHTTPS = true
 		} else {
 			c.Errors["tunnel_https"] = s.scrub(e.Error())
@@ -189,9 +213,18 @@ func (s *Server) collectConnectivity(full bool) Connectivity {
 }
 func (s *Server) saveConnectivity(c Connectivity) {
 	_ = atomicWrite(s.runtimePath("connectivity.json"), jsonBytes(c))
+	if !c.Complete && c.Errors["incomplete"] != "" {
+		appendEvent("diagnostic_incomplete", c.Errors["incomplete"])
+		return
+	}
 	appendEvent("connectivity", fmt.Sprintf("Xray=%t DNS=%t правила=%t прямой HTTPS=%t сервер TCP=%t VPN HTTPS=%t", c.Xray, c.LocalDNS, c.Rules, c.WAN, c.ServerTCP, c.TunnelHTTPS))
 }
 func (s *Server) recoverComponents(reason string) error {
+	ctx, cancel := context.WithTimeout(s.networkContext(), 90*time.Second)
+	defer cancel()
+	return s.networkOperation(ctx).recoverComponentsWithin(reason)
+}
+func (s *Server) recoverComponentsWithin(reason string) error {
 	if s.pendingRecovery() {
 		return errors.New("Сначала завершите восстановление незавершённой операции")
 	}
@@ -210,7 +243,7 @@ func (s *Server) recoverComponents(reason string) error {
 		c.Actions = append(c.Actions, "Запущен Xray")
 	}
 	c.Xray = true
-	if !pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf") || dnsFailureConfirmed(func() error { return testDNS("127.0.0.1:10535") }, func() { time.Sleep(2 * time.Second) }) {
+	if !pidMatches("/tmp/dnsmasq-vpn.pid", "dnsmasq-vpn.conf") || dnsFailureConfirmed(func() error { return testDNSContext(s.networkContext(), routerenv.HelperDNS) }, func() { _ = waitContext(s.networkContext(), 2*time.Second) }) {
 		s.captureRecovery(c, "Восстановление DNS helper: "+reason)
 		if out, e := s.run("sh", filepath.Join(s.dir, "reload-dns.sh")); e != nil {
 			c.Errors["local_dns"] = s.scrub(string(out))
@@ -230,8 +263,7 @@ func (s *Server) recoverComponents(reason string) error {
 	}
 	c.Rules = true
 	if len(c.Actions) > 0 {
-		recordRecovery(strings.Join(c.Actions, "; "))
-		return nil
+		return s.confirmRecovery(&c, strings.Join(c.Actions, "; "))
 	}
 	if !c.Clock {
 		c.Errors["clock"] = "ожидается синхронизация часов"
@@ -239,13 +271,16 @@ func (s *Server) recoverComponents(reason string) error {
 	}
 	// A site-specific error never calls this path. Recheck the whole tunnel.
 	c = s.collectConnectivity(true)
+	if !c.Complete {
+		return errDiagnosticIncomplete
+	}
 	if c.TunnelHTTPS {
 		if shouldRestartTunnel(c) {
 			// An upstream DNS delay is not proof that Xray is stuck. Give DNS
 			// two fresh attempts, then recheck HTTPS before interrupting clients.
 			confirmed, failures := confirmTunnelDNSFailure(func() error {
-				return testDNS("127.0.0.1:1053")
-			}, checkVPNConnection, func() { time.Sleep(2 * time.Second) })
+				return testDNSContext(s.networkContext(), routerenv.TunnelDNS)
+			}, func() error { return checkVPNConnectionContext(s.networkContext()) }, func() { _ = waitContext(s.networkContext(), 2*time.Second) })
 			if !confirmed {
 				if len(failures) < 2 {
 					c.TunnelDNS = true
@@ -264,7 +299,7 @@ func (s *Server) recoverComponents(reason string) error {
 				return e
 			}
 			c.Actions = append(c.Actions, "Перезапущен Xray после повторного отказа DNS через туннель")
-			recordRecovery("Повторно не отвечал DNS через Xray при рабочем HTTPS; Xray перезапущен")
+			return s.confirmRecovery(&c, "Повторно не отвечал DNS через Xray; процесс перезапущен")
 		}
 		return nil
 	}
@@ -277,8 +312,7 @@ func (s *Server) recoverComponents(reason string) error {
 	if prefs.AutoFailover && s.backupConfigured() {
 		if e := s.failover(); e == nil {
 			c.Actions = append(c.Actions, "Переключено на проверенный резерв")
-			recordRecovery("Переключение на резерв")
-			return nil
+			return s.confirmRecovery(&c, "Переключение на резерв")
 		} else {
 			c.Errors["backup"] = s.scrub(e.Error())
 		}
@@ -291,43 +325,62 @@ func (s *Server) recoverComponents(reason string) error {
 		return e
 	}
 	c.Actions = append(c.Actions, "Перезапущен только Xray")
-	recordRecovery("Туннель не отвечал при доступном интернете и сервере: " + reason)
-	return nil
+	return s.confirmRecovery(&c, "Туннель не отвечал при доступном интернете и сервере: "+reason)
 }
+
+// Canonicalize complete option/argument pairs, never individual tokens. Sorting
+// tokens alone could mistake swapped source and destination for the same rule.
+var ruleArity = map[string]int{"-p": 1, "-s": 1, "-d": 1, "-i": 1, "-o": 1, "-m": 1, "-j": 1, "--match-set": 2, "--dport": 1, "--sport": 1, "--dports": 1, "--mark": 1, "--to-ports": 1, "--on-port": 1, "--on-ip": 1, "--tproxy-mark": 1, "--reject-with": 1}
+
 func canonicalRule(line string) string {
 	f := strings.Fields(line)
 	if len(f) > 2 && f[0] == "-A" {
 		f = f[2:]
 	}
-	out := []string{}
-	for i := 0; i < len(f); i++ {
-		if f[i] == "-m" && i+1 < len(f) && (f[i+1] == "tcp" || f[i+1] == "udp") {
+	groups := []string{}
+	for i := 0; i < len(f); {
+		start := i
+		if f[i] == "!" {
 			i++
+			if i == len(f) {
+				return line
+			}
+		}
+		n, ok := ruleArity[f[i]]
+		if !ok || i+n >= len(f) {
+			return line
+		}
+		end := i + n + 1
+		if f[i] == "-m" && (f[i+1] == "tcp" || f[i+1] == "udp") {
+			i = end
 			continue
 		}
-		out = append(out, f[i])
+		groups = append(groups, strings.Join(f[start:end], " "))
+		i = end
 	}
-	sortStrings(out)
-	return strings.Join(out, " ")
-}
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
+	sort.Strings(groups)
+	return strings.Join(groups, " | ")
 }
 func (s *Server) checkRoutingOnly() error {
+	ctx, cancel := context.WithTimeout(s.networkContext(), 8*time.Second)
+	defer cancel()
+	err := s.networkOperation(ctx).checkRoutingWithin()
+	if ctx.Err() != nil {
+		return fmt.Errorf("%w: %v", errDiagnosticIncomplete, ctx.Err())
+	}
+	return err
+}
+func (s *Server) checkRoutingWithin() error {
 	for _, v := range []struct{ table, hook, chain string }{{"nat", "PREROUTING", "DV_NAT"}, {"mangle", "PREROUTING", "DV_UDP"}, {"filter", "INPUT", "DV_IN"}} {
-		if _, e := s.run("iptables", "-t", v.table, "-C", v.hook, "-i", "br0", "-s", "192.168.50.0/24", "-j", v.chain); e != nil {
+		if _, e := s.run("iptables", "-t", v.table, "-C", v.hook, "-i", routerenv.LANInterface, "-s", routerenv.LANPrefix, "-j", v.chain); e != nil {
 			return fmt.Errorf("отсутствует подключение %s", v.chain)
 		}
 	}
 	rules, _ := s.run("ip", "rule", "show")
-	if !strings.Contains(string(rules), "fwmark 0x1000000/0x1000000 lookup 100") {
+	if !strings.Contains(string(rules), "fwmark "+routerenv.Mark+" lookup "+routerenv.RouteTable) {
 		return errors.New("нет policy rule")
 	}
-	route, _ := s.run("ip", "route", "show", "table", "100")
+	route, _ := s.run("ip", "route", "show", "table", routerenv.RouteTable)
 	if !strings.Contains(string(route), "local default") || !strings.Contains(string(route), "dev lo") {
 		return errors.New("нет local route")
 	}

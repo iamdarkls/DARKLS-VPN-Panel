@@ -217,7 +217,7 @@ func (s *Server) testOutbound(ctx context.Context, out map[string]any) error {
 		return e
 	}
 	return s.candidate(ctx, cfg, 10818, func(c *http.Client) error {
-		return probeTargets(c, []probeTarget{{"https://www.gstatic.com/generate_204", 204, ""}, {"https://www.cloudflare.com/cdn-cgi/trace", 200, "\nip="}})
+		return probeTargetsContext(ctx, c, []probeTarget{{"https://www.gstatic.com/generate_204", 204, ""}, {"https://www.cloudflare.com/cdn-cgi/trace", 200, "\nip="}})
 	})
 }
 func (s *Server) saveBackup(ctx context.Context, raw string) error {
@@ -265,7 +265,7 @@ func (s *Server) switchProfile(ctx context.Context, name string) error {
 	if e = replaceVPN(cfg, out); e != nil {
 		return e
 	}
-	return s.commitProfileSwitch(cfg, original, name, s.restartMainXray, checkVPNConnection)
+	return s.commitProfileSwitch(cfg, original, name, s.restartMainXray, func() error { return checkVPNConnectionContext(s.networkContext()) })
 }
 
 // Keep the recovery journal until both the restored files and the old tunnel
@@ -333,7 +333,7 @@ func (s *Server) failover() error {
 		return errors.New("интервал между переключениями 5 минут")
 	}
 	_ = atomicWrite(s.runtimePath("last-failover"), []byte(fmt.Sprint(now)))
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(s.networkContext(), 60*time.Second)
 	defer cancel()
 	return s.switchProfile(ctx, "backup")
 }

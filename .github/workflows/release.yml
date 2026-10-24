@@ -1,18 +1,13 @@
 name: Publish signed panel release
 on:
-  push:
-    branches: [main]
-    paths: ['release-version.txt']
+  workflow_call:
 permissions:
   contents: read
 concurrency:
   group: signed-panel-release
   cancel-in-progress: false
 jobs:
-  test:
-    uses: ./.github/workflows/validate.yml
   release:
-    needs: test
     runs-on: ubuntu-24.04
     permissions:
       contents: write
