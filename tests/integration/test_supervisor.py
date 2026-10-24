@@ -38,6 +38,9 @@ with tempfile.TemporaryDirectory() as tmp:
     # Keep signal delivery real; provide the two identity files explicitly.
     (home / 'owner-cmdline').write_text(str(base / 'watch.sh'))
     (home / 'panel-cmdline').write_text(str(panel / 'darkls-panel'))
+    uptime_file = home / 'uptime'
+    uptime_file.write_text('10000.00 0.00\n')
+    script = script.replace('/proc/uptime', str(uptime_file))
     script = script.replace('"/proc/$owner/cmdline"', '"' + str(home / 'owner-cmdline') + '"')
     script = script.replace('"/proc/$panel_pid/cmdline"', '"' + str(home / 'panel-cmdline') + '"')
     watch = base / 'watch.sh' 
@@ -76,14 +79,14 @@ while :; do sleep .1; done
         fake = subprocess.Popen(['sh', str(binary)], start_new_session=True)
         processes.append(fake)
         (home / 'darkls-panel.pid').write_text(str(fake.pid))
-        uptime = int(float(Path('/proc/uptime').read_text().split()[0]))
+        uptime = 10000
         heartbeat = home / 'darkls-monitor-heartbeat'
         heartbeat.write_text(f'{fake.pid} {uptime}\n')
         watcher = start()
         wait_for(lambda: pidfile.exists(), 'heartbeat supervisor did not start')
         time.sleep(.3)
         assert fake.poll() is None, 'fresh heartbeat killed the panel'
-        heartbeat.write_text(f'{fake.pid} 0\n')
+        heartbeat.write_text(f'{fake.pid} {uptime-241}\n')
         wait_for(lambda: stopped.exists(), 'stale monitor was not restarted')
         fake.wait(timeout=5)
         stop(watcher)
