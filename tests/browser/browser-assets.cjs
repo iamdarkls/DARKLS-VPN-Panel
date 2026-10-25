@@ -1,18 +1,20 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
+const fs=require('node:fs');
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH});
  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
  const root='http://127.0.0.1:18088';
  await page.goto(root);await page.locator('#login-form').waitFor();
- const gzip=await page.request.get(root+'/js/core/ui.js',{headers:{'Accept-Encoding':'gzip'}});
+ const gzip=await page.request.get(root+'/assets/panel.js',{headers:{'Accept-Encoding':'gzip'}});
  assert.equal(gzip.headers()['content-encoding'],'gzip');assert.equal(gzip.headers()['cache-control'],'no-cache');
- const source=await gzip.text();assert(source.includes('class FormDraft'));
- const cached=await page.request.get(root+'/js/core/ui.js',{headers:{'If-None-Match':gzip.headers().etag}});
+ const source=await gzip.text();assert.equal(source,fs.readFileSync('web/dist/assets/panel.js','utf8'));
+ assert.equal(await page.locator('script[src="/assets/panel.js"]').count(),1);
+ const cached=await page.request.get(root+'/assets/panel.js',{headers:{'If-None-Match':gzip.headers().etag}});
  assert.equal(cached.status(),304);assert.equal((await cached.body()).length,0);
- const identity=await page.request.get(root+'/js/core/ui.js',{headers:{'Accept-Encoding':'identity'}});
+ const identity=await page.request.get(root+'/assets/panel.js',{headers:{'Accept-Encoding':'identity'}});
  assert.equal(identity.headers()['content-encoding'],undefined);assert.equal(await identity.text(),source);
- const refused=await page.request.get(root+'/js/core/ui.js',{headers:{'Accept-Encoding':'gzip;q=0, identity;q=0'}});
+ const refused=await page.request.get(root+'/assets/panel.js',{headers:{'Accept-Encoding':'gzip;q=0, identity;q=0'}});
  assert.equal(refused.status(),406);
  await page.reload();await page.locator('#login-form input[name=password]').fill('preview-password');
  await page.locator('#login-form button').click();await page.locator('.card').first().waitFor();

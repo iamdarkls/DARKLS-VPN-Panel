@@ -1,0 +1,24 @@
+{
+  "name": "darkls-vpn-panel-ui",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "vue-tsc --noEmit && vite build && python3 ../tools/build_assets.py",
+    "preview": "vite preview --host 127.0.0.1",
+    "format": "prettier --write src vite.config.ts tsconfig.json index.html",
+    "format:check": "prettier --check src vite.config.ts tsconfig.json index.html"
+  },
+  "dependencies": {
+    "vue": "3.5.44"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.10",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vue-tsc": "3.3.13"
+  }
+}

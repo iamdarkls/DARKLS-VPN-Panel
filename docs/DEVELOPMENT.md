@@ -1,88 +1,102 @@
-# Разработка и выпуски
+# Разработка
 
-[Главная](../README.md) · [Архитектура](ARCHITECTURE.md)
+## Инструменты
 
-**Go 1.27.2**, Python 3. Внешних Go-модулей и JavaScript-фреймворков нет. Сжатые ресурсы интерфейса подготавливает небольшой Python-скрипт.
+- Go **1.27.2**, Python 3, Node.js **24**.
+- Vue 3, TypeScript и Vite закреплены точными версиями в `web/package-lock.json`.
+- Для браузерных сценариев — Playwright из `tools/browser/package-lock.json` и Chromium.
+
+Node.js нужен для разработки и сборки. Роутер запускает один Go-бинарник со встроенными сжатыми ресурсами; Vue выполняется в браузере. Внешних Go-модулей, CDN, удалённых шрифтов и серверного Node.js нет.
+
+## Собрать интерфейс
+
+Из корня репозитория:
+
+```sh
+npm ci --prefix web
+npm run --prefix web build
+```
+
+Команда проверяет TypeScript, собирает `web/dist` через Vite и обновляет `web/assets_generated.go`. В нём находятся только gzip-представления трёх production-ресурсов и отпечатки исходников. `web/dist` и `node_modules` не коммитятся; `assets_generated.go` коммитится вместе с исходниками.
+
+После редактирования компонентов:
+
+```sh
+npm run --prefix web format
+npm run --prefix web build
+gofmt -w web/assets_generated.go
+```
+
+Отдельные команды: `npm run --prefix web typecheck` и `npm run --prefix web format:check`.
+
+## Локальный интерфейс и тестовая панель
+
+```sh
+DARKLS_BROWSER_PREVIEW=1 go test -run '^TestBrowserHarness$' -v ./internal/panel
+```
+
+Тестовая панель доступна на `http://127.0.0.1:18088`, пароль `preview-password`; данные временные, реальный VPN не используется. Для HMR в другом терминале запусти `npm run --prefix web dev`: локальный Vite проксирует `/api` на эту тестовую панель. Эта настройка не попадает в production-пакет.
+
+`npm run --prefix web preview` показывает статическую production-сборку; для полноценной работы с авторизацией нужен Go-сервер и его API.
+
+## Проверки
+
+Сначала собери интерфейс, затем:
 
 ```sh
 python3 tools/build_assets.py --check
 go test -race ./...
 go vet ./...
-python3 -m unittest discover -s tools -p "test_*.py"
-sh -n release/install-update.sh
-sh -n release/watch.sh
+python3 -m unittest discover -s tools -p 'test_*.py'
+```
+
+Go-тесты проверяют раздачу именно `web/dist`: gzip/identity, HEAD, ETag, отсутствие кеширования API и точный список публичных ресурсов. Сервер не раздаёт `.vue`, TypeScript, исходный HTML или произвольные пути под `/assets`.
+
+Для браузерных проверок:
+
+```sh
+npm ci --prefix tools/browser
+tools/browser/node_modules/.bin/playwright install --with-deps chromium
+NODE_PATH="$PWD/tools/browser/node_modules" python3 tests/integration/run_browser.py
+```
+
+`CHROME_PATH` задаёт другой Chromium; `GO_BIN` и `NODE_BIN` — пути к инструментам. Можно передать имена отдельных сценариев после `run_browser.py`. Тесты работают через пользовательский интерфейс и HTTP, не через глобальные функции старого приложения.
+
+Проверяются каталог, группы и предпросмотр, выбор устройств, черновики, редактор XHTTP/gRPC с сохранением незнакомых полей, очищение секретов, обновления и откат, темы, уведомления поверх диалогов, мобильная вёрстка и завершение сеанса во время запросов.
+
+## Установка и сеть
+
+Установочные сценарии принимают пути к двум исполняемым бинарникам для архитектуры тестовой машины:
+
+```sh
+export DARKLS_BASELINE_BINARY=/tmp/darkls-baseline-bin
+export DARKLS_CURRENT_BINARY=/tmp/darkls-current-bin
+sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_installer.py
+sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_ota.py
+sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_recovery_mode.py
+python3 tests/integration/test_supervisor.py
+```
+
+Файлы и команды роутера заменены временными фикстурами. Сценарии проверяют пароль, выбор сайтов, состав пакета, запуск новой версии и возврат прежней.
+
+`sudo python3 tests/integration/test_network.py` требует Linux, iproute2, iptables и разрешение на network namespaces. Создаются изолированный bridge/router и три клиента: параллельные TCP-передачи, медленный DNS, отказ backend и возврат NAT-hook. Файрвол хоста не меняется. В CI тест обязателен; ограниченные контейнеры без CAP_NET_ADMIN не могут выполнить его локально.
+
+Проверка XHTTP и прошивки ASUS на настоящем устройстве описана в [ROUTER_SOAK.md](ROUTER_SOAK.md).
+
+## Пакет и выпуск
+
+```sh
 python3 tools/build_release.py
 ```
 
-Подписанный выпуск создаётся после изменения `release-version.txt` и отправки коммита в `main`. GitHub Actions выполняет проверки, собирает ARM64 ZIP, подписывает метаданные и создаёт Release на проверенном коммите. Версии и опубликованные теги не перезаписываются.
+По умолчанию версия берётся из `release-version.txt`, архитектура — `arm64`. `--arch amd64` предназначен для тестов. `--version` меняет версию только этой сборки; `--output-dir` задаёт выходной каталог. Перед Go-сборкой проверяются отпечатки frontend-исходников. Сборщик не загружает зависимости самостоятельно: `npm ci` и `npm run build` выполняются заранее.
 
-Приватный ключ подписи находится в Actions secret `RELEASE_SIGNING_KEY`; в репозитории и бинарнике панели хранится только публичный ключ. На роутер GitHub-токен и приватный ключ не передаются.
+ZIP содержит ровно шесть файлов: бинарник, четыре shell-скрипта и `manifest.json`. `node_modules`, исходники и файлы разработки в пакет не входят. Ключ подписи — `assets/github-public-key.txt`; приватный ключ хранится только в GitHub Actions secret `RELEASE_SIGNING_KEY`.
 
-Единый `.github/workflows/validate.yml` вызывается CI и публикацией выпуска; устанавливает Playwright 1.62.1, прогоняет все браузерные сценарии и установочные проверки и запуск в режиме восстановления на нативных бинарниках текущего коммита и последнего помеченного выпуска (при отсутствии тега — родительского коммита). Подпись и выпуск ждут завершения этих проверок.
+Перед выпуском согласуй `release-version.txt`, версию в `internal/panel/cli.go`, `web/package.json` и раздел `CHANGELOG.md`. GitHub Release получает описание из CHANGELOG. README остаётся руководством.
 
-Проверки проекта включают Go race/vet, тесты метаданных/архивов/таймеров/очистки/отката, браузерные сценарии и имитацию установщика. **Реальная установка нового ядра, скорость и длительная стабильность проверяются на ASUS.**
+## CI
 
-Опциональная проверка gRPC на официальном локальном Xray: `DARKLS_XRAY_TEST_BINARY=/путь/к/xray go test ./internal/panel -run TestGRPCNativeLoopback -v`. Клиент, сервер и HTTP-цель запускаются только на loopback. Проверяются Gun/Multi без TLS и с тестовым самоподписанным сертификатом; реквизиты реального VPN не используются.
+`ci.yml` запускает reusable `validate.yml` один раз на коммит. Интерфейс проходит `npm ci`, `vue-tsc` и production-сборку до Go-тестов. При изменении версии на main reusable `release.yml` публикует только успешно проверенный коммит и повторно собирает frontend из lockfile перед подписанием пакета.
 
-## Модули и браузерные проверки
-
-`web/js/core/ui.js` содержит общие DOM-элементы и FormDraft, `web/js/components/navigation.js` — PanelNavigation и реестр разделов. Далее загружаются `web/js/features/app.js` и остальные функциональные модули. Скрипты исполняются последовательно с `defer`; npm-сборщик не требуется.
-
-Браузерные сценарии требуют Node.js, Playwright и Chromium:
-
-```sh
-GO_BIN=go NODE_BIN=node CHROME_PATH=/путь/к/chromium python3 tests/integration/run_browser.py
-```
-
-`NODE_PATH` указывается, если Playwright установлен вне проекта. Тестовый сервер и сценарий запускаются одним процессом-обёрткой: данные временные, подключение к домашнему VPN не требуется. Проверяются навигация, черновики, серверы, уведомления, обновления и мобильная вёрстка.
-
-`tests/integration/test_installer.py` и `tests/integration/test_ota.py` принимают `DARKLS_BASELINE_BINARY` и `DARKLS_CURRENT_BINARY`: пути к исполняемым бинарникам прежней и новой версии для архитектуры тестовой машины. В GitHub Actions установочные сценарии выполняются через sudo с передачей только путей тестовых бинарников: shell-установщик проверяет UID администратора. Все рабочие файлы и команды роутера заменены временными фикстурами. Эти сценарии используют заглушки роутера, проверяют установку, сохранение пароля и откат при отказе старта.
-
-## Сборка и публикация
-
-Без `--version` сборщик читает `release-version.txt`. Явный `--version 1.2.3` задаёт версию только этой сборки. Архитектура по умолчанию `arm64`; `--arch amd64` предназначена для тестов на соответствующей машине. `--output-dir` меняет каталог результата.
-
-В ZIP входят только бинарник, четыре shell-скрипта и `manifest.json`. Исходники, тесты и документация в пакет роутера не попадают. Локальная сборка не подписывает выпуск: подпись создаётся GitHub Actions закреплённым ключом проекта.
-
-Перед публикацией согласуются `release-version.txt`, версия в `internal/panel/cli.go`, начальная подпись версии интерфейса и раздел `CHANGELOG.md`. Описание GitHub Release извлекается из этого раздела; README остаётся руководством, а не журналом изменений.
-
-## Точки входа после переноса папок
-
-Из корня репозитория:
-
-```sh
-go run ./cmd/darkls-panel --version
-go build -o /tmp/darkls-panel ./cmd/darkls-panel
-go test ./internal/panel -run TestBrowserHarness -v
-```
-
-Последняя команда сама по себе не запускает браузер: для полного сценария используется `tests/integration/run_browser.py`. Go-тесты лежат рядом с внутренним пакетом и входят в `go test -race ./...`; браузерные сценарии — в `tests/browser/`.
-
-Версия бинарника задаётся сборщиком через `-X darkls-panel/internal/panel.version=<версия>`. Прежний путь `main.version` после выделения пакета не используется. Публичный ключ подписи имеет единственный исходник `assets/github-public-key.txt`; `tools/releasekey` использует этот путь по умолчанию. Каталог `assets/` не должен содержать приватные ключи.
-
-Реорганизация касается исходников. На роутере по-прежнему устанавливается один бинарник и прежние shell-скрипты, а манифест и формат шестикомпонентного ZIP не меняются.
-
-## Изменение HTML, JavaScript и CSS
-
-После правки исходников `web/index.html`, `web/js/` или `web/css/` запусти:
-
-```sh
-python3 tools/build_assets.py
-gofmt -w web/assets_generated.go
-```
-
-`web/assets_generated.go` коммитится вместе с исходниками. Бинарник хранит только gzip-представление UI, без второй несжатой копии. Сборка и CI проверяют хеши исходников; Go-тесты распаковывают каждую запись и сравнивают её с редактируемым файлом. Проверка свежести не зависит от различий zlib на машинах разработчика и CI.
-
-JS/CSS поддерживают ETag и обязательную перепроверку кеша. Главная HTML-страница и API используют `no-store`; содержимое API, реквизиты и результаты диагностики не попадают в статический кеш.
-
-## Проверки сети и супервизора
-
-`go test -race ./...` проверяет общий срок диагностики, отмену команд, подтверждение восстановления, повторные отказы и свежесть heartbeat. `python3 tests/integration/test_supervisor.py` проверяет конкурирующий запуск, SIGKILL, оставшуюся блокировку и просроченный heartbeat на временных файлах и процессах.
-
-`sudo python3 tests/integration/test_network.py` требует Linux, iproute2, iptables и разрешение на сетевые namespaces. Он создаёт отдельный bridge/router и трёх клиентов: параллельные TCP-передачи через REDIRECT, DNS с задержкой одного клиента, отказ backend, удаление и возврат NAT-hook. Файрвол и маршруты хоста не изменяются; namespaces удаляются в finally. В CI этот тест обязателен и не скрывается через skip. В ограниченном контейнере без CAP_NET_ADMIN он недоступен.
-
-Настоящий сервер XHTTP и прошивка ASUS этим стендом не эмулируются. Для проверки на устройстве используется [порядок нагрузочного испытания](ROUTER_SOAK.md).
-
-## Один CI перед выпуском
-
-`ci.yml` запускает reusable `validate.yml` один раз на коммит. Изменение `release-version.txt` на main планирует публикацию через reusable `release.yml` только после успешной проверки того же коммита. Отдельного второго полного прогона выпуска нет. Playwright закреплён в `tools/browser/package-lock.json`; npm и Chromium кешируются по хешу lockfile. До трёх попыток разрешено только установке зависимостей и скачиванию браузера, сами тесты не повторяются автоматически.
+Все Actions закреплены по SHA и используют Node.js 24. npm-кеш учитывает оба lockfile, Chromium кешируется отдельно. Ограниченные повторы разрешены только загрузке зависимостей; ошибки тестов не маскируются повторами.

@@ -1,7 +1,7 @@
 // Package web serves build-time compressed assets without retaining decoded copies.
 package web
 
-//go:generate python3 ../tools/build_assets.py
+//go:generate npm run build
 
 import (
 	"compress/gzip"
@@ -113,3 +113,7 @@ func ServeAsset(w http.ResponseWriter, r *http.Request) {
 	defer reader.Close()
 	_, _ = io.Copy(w, reader)
 }
+
+// HasAsset is the exact build-generated allowlist; source files and arbitrary
+// paths beneath /assets are never made public.
+func HasAsset(path string) bool { _, ok := compressedAssets[path]; return ok }

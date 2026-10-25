@@ -16,7 +16,7 @@ func TestCompressedAssetsMatchEditableSource(t *testing.T) {
 		if name == "" {
 			name = "index.html"
 		}
-		want, err := os.ReadFile(name)
+		want, err := os.ReadFile("dist/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +44,7 @@ func TestAssetEncodingHeadAndIdentity(t *testing.T) {
 	} {
 		for _, method := range []string{"GET", "HEAD"} {
 			t.Run(method+"/"+tc.header, func(t *testing.T) {
-				req := httptest.NewRequest(method, "/js/core/ui.js", nil)
+				req := httptest.NewRequest(method, "/assets/panel.js", nil)
 				req.Header.Set("Accept-Encoding", tc.header)
 				result := httptest.NewRecorder()
 				ServeAsset(result, req)
@@ -60,7 +60,7 @@ func TestAssetEncodingHeadAndIdentity(t *testing.T) {
 				if tc.status != 200 {
 					return
 				}
-				asset := compressedAssets["/js/core/ui.js"]
+				asset := compressedAssets["/assets/panel.js"]
 				size := asset.size
 				if tc.encoding == "gzip" {
 					size = len(asset.data)
@@ -81,7 +81,7 @@ func TestAssetEncodingHeadAndIdentity(t *testing.T) {
 							t.Fatal(err)
 						}
 					}
-					source, err := os.ReadFile("js/core/ui.js")
+					source, err := os.ReadFile("dist/assets/panel.js")
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -95,9 +95,9 @@ func TestAssetEncodingHeadAndIdentity(t *testing.T) {
 }
 
 func TestStaticRevalidationDoesNotCacheHTML(t *testing.T) {
-	asset := compressedAssets["/js/core/ui.js"]
+	asset := compressedAssets["/assets/panel.js"]
 	for _, header := range []string{asset.etag, "\"unrelated\", " + asset.etag, "*"} {
-		req := httptest.NewRequest("GET", "/js/core/ui.js", nil)
+		req := httptest.NewRequest("GET", "/assets/panel.js", nil)
 		req.Header.Set("If-None-Match", header)
 		result := httptest.NewRecorder()
 		ServeAsset(result, req)

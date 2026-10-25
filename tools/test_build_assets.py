@@ -10,10 +10,13 @@ class AssetFreshnessTests(unittest.TestCase):
     def test_changed_or_added_source_requires_regeneration(self):
         with tempfile.TemporaryDirectory() as directory:
             web = Path(directory)
-            (web / 'js').mkdir()
-            (web / 'index.html').write_text('<html>test</html>')
-            script = web / 'js/test.js'
+            (web / 'src').mkdir()
+            (web / 'dist/assets').mkdir(parents=True)
+            (web / 'index.html').write_text('<html>source</html>')
+            script = web / 'src/main.ts'
             script.write_text('const text = "test";')
+            for name in build_assets.ASSETS:
+                (web / 'dist' / name).write_text('production build')
             with patch.object(build_assets, 'WEB', web), patch.object(build_assets, 'GENERATED', web / 'assets_generated.go'):
                 self.assertFalse(build_assets.check())
                 build_assets.generate()
@@ -22,7 +25,7 @@ class AssetFreshnessTests(unittest.TestCase):
                 self.assertFalse(build_assets.check())
                 build_assets.generate()
                 self.assertTrue(build_assets.check())
-                (web / 'js/extra.js').write_text('const extra = 1;')
+                (web / 'src/extra.vue').write_text('const extra = 1;')
                 self.assertFalse(build_assets.check())
 
 

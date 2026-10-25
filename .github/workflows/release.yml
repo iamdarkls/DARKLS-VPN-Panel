@@ -17,6 +17,18 @@ jobs:
         with:
           go-version: '1.27.2'
           cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            tools/browser/package-lock.json
+      - name: Install frontend dependencies
+        timeout-minutes: 5
+        run: sh tools/ci_retry.sh npm ci --prefix web --no-audit --no-fund
+      - name: Typecheck and build Vue interface
+        run: npm run --prefix web build
       - name: Validate release version
         id: version
         run: |

@@ -311,12 +311,5 @@ func (s *Server) status(w http.ResponseWriter) {
 	respond(w, 200, map[string]any{"recovery_pending": s.pendingRecovery(), "active": nat && udp && xray && dns && !s.disabled() && probe.OK && fresh && recoveryVerified(probe), "routes": nat && udp && xray && dns, "disabled": s.disabled(), "nat": nat, "udp": udp, "xray": xray, "dns": dns, "watch": watch, "recovery_confirmation": probe.Confirmation, "monitor": readMonitorHeartbeat(s.runtimePath("monitor-heartbeat")), "version": version, "probe": probe, "probe_fresh": fresh})
 }
 
-// Keep the asset allowlist explicit even though the web package embeds asset directories.
-func publicAsset(path string) bool {
-	switch path {
-	case "/", "/js/features/app.js", "/js/core/ui.js", "/js/components/navigation.js", "/js/core/theme.js", "/css/style.css", "/js/features/advanced.js", "/js/features/core.js", "/js/features/manage.js", "/js/components/notifications.js":
-		return true
-	default:
-		return false
-	}
-}
+// Only the three immutable production assets belong to the public allowlist.
+func publicAsset(path string) bool { return web.HasAsset(path) }

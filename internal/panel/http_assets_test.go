@@ -26,7 +26,7 @@ func TestHTMLAssetsServedThroughExplicitAllowlist(t *testing.T) {
 		t.Fatal(index.Code)
 	}
 	scripts := regexp.MustCompile(`src="([^"]+)"`).FindAllStringSubmatch(index.Body.String(), -1)
-	if len(scripts) < 2 {
+	if len(scripts) < 1 {
 		t.Fatal("frontend scripts missing")
 	}
 	for _, script := range scripts {
@@ -36,10 +36,10 @@ func TestHTMLAssetsServedThroughExplicitAllowlist(t *testing.T) {
 			}
 		}
 	}
-	if w := request("POST", "/js/core/ui.js"); w.Code != 405 {
+	if w := request("POST", "/assets/panel.js"); w.Code != 405 {
 		t.Errorf("asset POST: %d", w.Code)
 	}
-	for _, path := range []string{"/index.html", "/auth.json", "/main.go", "/missing.js"} {
+	for _, path := range []string{"/index.html", "/auth.json", "/main.go", "/missing.js", "/src/main.ts", "/assets/private.js", "/assets/../auth.json"} {
 		if w := request("GET", path); w.Code != 404 {
 			t.Errorf("unexpected public file %s: %d", path, w.Code)
 		}
