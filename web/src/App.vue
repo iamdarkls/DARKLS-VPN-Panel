@@ -36,6 +36,42 @@ import UpdatesView from './views/UpdatesView.vue';
 import BackupsView from './views/BackupsView.vue';
 import ResourcesView from './views/ResourcesView.vue';
 import PasswordView from './views/PasswordView.vue';
+import NavIcon from './components/NavIcon.vue';
+import LogsDialog from './components/LogsDialog.vue';
+const logsOpen = ref(false),
+  collapsed = ref(false),
+  menuSearch = ref('');
+try {
+  collapsed.value = localStorage.getItem('darkls-sidebar-collapsed') === '1';
+} catch {}
+watch(collapsed, (value) => {
+  try {
+    localStorage.setItem('darkls-sidebar-collapsed', value ? '1' : '0');
+  } catch {}
+});
+watch(
+  () => auth.loggedIn,
+  (value) => {
+    if (!value) logsOpen.value = false;
+  }
+);
+const filteredMenus = computed(() =>
+  menus
+    .map(
+      ([name, items]) =>
+        [
+          name,
+          items.filter((id) =>
+            views[id].title.toLowerCase().includes(menuSearch.value.toLowerCase())
+          ),
+        ] as [string, View[]]
+    )
+    .filter(([, items]) => items.length)
+);
+function navigate(id: View) {
+  if (id === 'logs') logsOpen.value = true;
+  else view.value = id;
+}
 const view = ref<View>('sites'),
   selected = reactive<Record<string, string>>({
     servers: 'main',
@@ -220,15 +256,31 @@ onUnmounted(() => {
       <p class="tiny muted">Адрес панели: 192.168.50.1:8088</p>
     </form>
   </section>
-  <div v-else id="app" :key="auth.epoch" class="app">
+  <div v-else id="app" :key="auth.epoch" class="app" :class="{ 'sidebar-collapsed': collapsed }">
     <aside>
-      <a class="wordmark" href="/">
-        DARKLS
-        <span>VPN</span>
-      </a>
+      <div class="sidebar-brand">
+        <button
+          class="icon-button collapse-menu"
+          :aria-expanded="!collapsed"
+          aria-label="Свернуть или развернуть меню"
+          @click="collapsed = !collapsed"
+        >
+          <NavIcon name="menu" />
+        </button>
+        <a class="wordmark" href="/">
+          DARKLS
+          <span>VPN</span>
+        </a>
+      </div>
       <div class="router-label">ASUS TUF-BE6500</div>
+      <input
+        v-model="menuSearch"
+        class="menu-search"
+        placeholder="Найти раздел…"
+        aria-label="Поиск раздела"
+      />
       <nav aria-label="Разделы панели">
-        <div v-for="[group, items] in menus" :key="group" class="nav-group">
+        <div v-for="[group, items] in filteredMenus" :key="group" class="nav-group">
           <p class="nav-heading">{{ group }}</p>
           <button
             v-for="id in items"
@@ -237,9 +289,12 @@ onUnmounted(() => {
             :class="{ active: view === id }"
             :data-view="id"
             :aria-current="view === id ? 'page' : undefined"
-            @click="view = id"
+            @click="navigate(id)"
+            :aria-label="views[id].title"
+            :title="views[id].title"
           >
-            {{ views[id].title }}
+            <NavIcon :name="id" />
+            <span class="nav-label">{{ views[id].title }}</span>
           </button>
         </div>
       </nav>
@@ -266,7 +321,17 @@ onUnmounted(() => {
                 : '◌ Требуется проверка'
           }}
         </div>
-        <Notifications />
+        <div class="header-actions">
+          <button id="open-logs" class="secondary" @click="logsOpen = true">
+            <NavIcon name="logs" />
+            Журналы
+          </button>
+          <button class="secondary" @click="view = 'metrics'">
+            <NavIcon name="metrics" />
+            Ресурсы
+          </button>
+          <Notifications />
+        </div>
       </header>
       <PanelBox
         v-show="status.recovery_pending"
@@ -352,7 +417,7 @@ onUnmounted(() => {
         v-show="view === 'metrics'"
         mode="metrics"
       />
-      <ResourcesView :ref="(el) => screenRef('logs', el)" v-show="view === 'logs'" mode="logs" />
+
       <PasswordView v-show="view === 'settings'" />
     </main>
     <footer id="savebar" ref="savebar" :class="{ 'has-changes': dirty || busy }">
@@ -386,6 +451,7 @@ onUnmounted(() => {
         </button>
       </div>
     </footer>
+    <LogsDialog v-if="logsOpen" @close="logsOpen = false" />
     <Modal :open="!!preview" label="Перед применением" @close="cancelApply">
       <div v-if="preview" class="panel-box">
         <h2>Перед применением</h2>

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { api } from '../api';
-import { mib, bytes, stamp } from '../composables/ui';
-import PanelBox from '../components/PanelBox.vue';
-import ActionButton from '../components/ActionButton.vue';
+import { mib, bytes } from '../composables/ui';
 defineProps<{ mode: 'metrics' | 'logs' }>();
 interface Metrics {
   cpu_percent: number | null;
@@ -16,13 +14,7 @@ interface Metrics {
   uptime_seconds: number;
   usb?: boolean;
 }
-const metrics = ref<Metrics>(),
-  logs = ref<{
-    events: { at: number; message: string }[];
-    watch: string;
-    panel: string;
-    update: string;
-  }>();
+const metrics = ref<Metrics>();
 const values = computed(() => {
   const m = metrics.value;
   if (!m) return [];
@@ -50,9 +42,8 @@ const values = computed(() => {
     ],
   ];
 });
-async function refresh(mode?: string) {
-  if (mode === 'logs') logs.value = await api('logs');
-  else metrics.value = await api('metrics');
+async function refresh() {
+  metrics.value = await api('metrics');
 }
 defineExpose({ refresh });
 </script>
@@ -69,35 +60,6 @@ defineExpose({ refresh });
       <p class="footnote">
         Память процессов — RSS. CPU — среднее между замерами. Опрос выполняется только при открытой
         вкладке панели.
-      </p>
-    </template>
-    <template v-else>
-      <PanelBox title="События">
-        <ActionButton id="refresh-logs" :action="() => refresh('logs')">Обновить</ActionButton>
-        <div id="event-list">
-          <div v-for="(event, i) in logs?.events" :key="i" class="event-row">
-            <span class="tiny muted">{{ stamp(event.at) }}</span>
-            <strong>{{ event.message }}</strong>
-          </div>
-          <p v-if="!logs?.events?.length" class="muted">Событий пока нет.</p>
-        </div>
-      </PanelBox>
-      <details
-        v-for="[key, title] in [
-          ['watch', 'Журнал автоконтроля'],
-          ['panel', 'Журнал панели'],
-          ['update', 'Журнал обновлений'],
-        ]"
-        :key="key"
-        class="panel-box"
-      >
-        <summary>{{ title }}</summary>
-        <pre :id="key + '-log'">{{
-          logs?.[key as 'watch' | 'panel' | 'update'] || 'Записей пока нет.'
-        }}</pre>
-      </details>
-      <p class="footnote">
-        Журналы хранятся в RAM с ограничением размера и очищаются после перезагрузки роутера.
       </p>
     </template>
   </section>

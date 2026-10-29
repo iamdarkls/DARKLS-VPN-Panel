@@ -5,7 +5,7 @@ import { clone, notice, clearNotifications, stamp } from './composables/ui';
 export const auth = reactive({
   ready: false,
   loggedIn: false,
-  version: '2.0.0',
+  version: '2.1.0',
   error: '',
   epoch: 0,
 });
