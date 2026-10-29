@@ -2,7 +2,7 @@
 
 ## Инструменты
 
-- Go **1.27.2**, Python 3, Node.js **24**.
+- Go **1.27.3**, Python 3, Node.js **24**.
 - Vue 3, TypeScript и Vite закреплены точными версиями в `web/package-lock.json`.
 - Для браузерных сценариев — Playwright из `tools/browser/package-lock.json` и Chromium.
 
