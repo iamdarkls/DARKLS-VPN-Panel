@@ -59,6 +59,26 @@ with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryFile() as log:
         journal.unlink()
         assert request('POST', 'recovery', {'password': password}, auth=True)[0] == 200
         assert not request('GET', 'status', auth=True)[1]['recovery_pending']
+        # Exercise the authenticated OFF path with the real panel HTTP server.
+        old_config = {'outbounds': [{'tag': 'vpn', 'protocol': 'vless', 'settings': {'test': 'old'}}]}
+        next_config = {'outbounds': [{'tag': 'vpn', 'protocol': 'vless', 'settings': {'test': 'failed-new'}}]}
+        (root/'config-vpn.json').write_text(json.dumps(next_config))
+        switch_journal = root/'panel/profile-switch-journal.json'
+        switch_journal.write_text(json.dumps(old_config))
+        (root/'vpn.sh').write_text('#!/bin/sh\necho "$1" >> "' + str(root/'routing-actions') + '"\nexit 0\n')
+        (root/'autostart.disabled').unlink()
+        assert request('GET', 'status', auth=True)[1]['offline_recovery_available']
+        code, result, _ = request('POST', 'recovery', {'password': password, 'offline': True}, auth=True)
+        assert code == 200 and result['offline'] is True, result
+        assert (root/'autostart.disabled').exists() and not switch_journal.exists()
+        assert json.loads((root/'config-vpn.json').read_text()) == old_config
+        saved = root/'panel/recovery-snapshots'/result['backup']
+        assert json.loads((saved/'config-vpn.json').read_text()) == next_config
+        assert json.loads((saved/'profile-switch-journal.json').read_text()) == old_config
+        assert (root/'routing-actions').read_text().splitlines() == ['stop']
+        status = request('GET', 'status', auth=True)[1]
+        assert status['disabled'] and not status['recovery_pending'] and not status['active']
+        print('PASS: authenticated offline rollback preserves snapshot, removes routing, unlocks settings and keeps VPN disabled')
         print('PASS: startup rollback failure keeps login/reads available, blocks writes, retains journal and supports authenticated retry')
     finally:
         proc.terminate()

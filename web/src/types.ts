@@ -46,6 +46,7 @@ export interface Status {
   dns?: boolean;
   watch?: boolean;
   recovery_pending?: boolean;
+  offline_recovery_available?: boolean;
   recovery_confirmation?: { ok: boolean; error?: string };
   monitor?: { fresh: boolean };
   probe?: Probe;

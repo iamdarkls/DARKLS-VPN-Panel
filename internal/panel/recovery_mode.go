@@ -32,6 +32,7 @@ func (s *Server) recoveryAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Password string `json:"password"`
+		Offline  bool   `json:"offline"`
 	}
 	if err := decode(w, r, &req); err != nil {
 		fail(w, 400, err)
@@ -51,6 +52,15 @@ func (s *Server) recoveryAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.diagnosticMu.Unlock()
+	if req.Offline {
+		backup, err := s.recoverProfileOffline()
+		if err != nil {
+			fail(w, 409, errors.New("Восстановление не завершено: "+s.scrub(err.Error())))
+			return
+		}
+		respond(w, 200, map[string]any{"ok": true, "offline": true, "backup": backup})
+		return
+	}
 	if err := s.recoverPending(); err != nil {
 		fail(w, 409, errors.New("Восстановление не завершено: "+s.scrub(err.Error())))
 		return

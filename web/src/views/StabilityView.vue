@@ -2,13 +2,14 @@
 import { computed, reactive, ref } from 'vue';
 import { api } from '../api';
 import type { ServiceHistory, Preferences, Profile } from '../types';
-import { activity, loadActivity, loadState, refreshStatus, cleanDraft } from '../store';
+import { activity, loadActivity, loadState, refreshStatus, cleanDraft, status } from '../store';
 import { notice, stamp, duration, serviceLabel } from '../composables/ui';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import DataTable from '../components/DataTable.vue';
 import ActionButton from '../components/ActionButton.vue';
 defineProps<{ tab: string }>();
+const recoveryBusy = ref(false);
 const history = ref<ServiceHistory>({}),
   password = ref(''),
   xrayPassword = ref(''),
@@ -69,14 +70,34 @@ async function refresh(tab = 'history') {
     if (!changed.value) Object.assign(form, p);
   }
 }
-async function recoverPending() {
+async function recoverPending(offline = false) {
+  if (recoveryBusy.value) return;
+  if (
+    offline &&
+    !confirm(
+      'Сохранить резервную копию, выключить VPN и завершить откат файлов без проверки старого сервера? VPN останется выключенным до вашего ручного включения.'
+    )
+  ) {
+    password.value = '';
+    return;
+  }
+  recoveryBusy.value = true;
   try {
-    await api('recovery', 'POST', { password: password.value });
-    notice('Восстановление завершено');
+    const result = await api<{ backup?: string }>('recovery', 'POST', {
+      password: password.value,
+      offline,
+    });
+    notice(
+      offline
+        ? 'Файлы восстановлены, VPN выключен. Выберите и проверьте рабочий сервер. Копия: panel/recovery-snapshots/' +
+            result.backup
+        : 'Восстановление завершено'
+    );
     await loadState();
-    await refreshStatus();
   } finally {
     password.value = '';
+    await refreshStatus().catch(() => {});
+    recoveryBusy.value = false;
   }
 }
 async function repair(component: string) {
@@ -180,7 +201,19 @@ defineExpose({ refresh });
           Пароль для завершения восстановления
           <input v-model="password" type="password" autocomplete="current-password" />
         </label>
-        <ActionButton :action="recoverPending">Повторить восстановление</ActionButton>
+        <ActionButton :disabled="recoveryBusy" :action="() => recoverPending()">
+          Повторить восстановление
+        </ActionButton>
+        <template v-if="status.offline_recovery_available">
+          <p class="muted">
+            Если прежний сервер недоступен, сохраните копию и завершите откат с выключенным VPN.
+            После этого можно выбрать новое подключение. Эта операция не подтверждает
+            работоспособность туннеля и не включает VPN автоматически.
+          </p>
+          <ActionButton :disabled="recoveryBusy" :action="() => recoverPending(true)">
+            Восстановить с выключенным VPN
+          </ActionButton>
+        </template>
       </PanelBox>
       <PanelBox
         title="Восстановить отдельную часть"

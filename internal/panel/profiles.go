@@ -448,7 +448,13 @@ func (s *Server) recoverProfileSwitchWith(restart, probe func() error) error {
 	if e = s.restoreProfileFiles(); e != nil {
 		return e
 	}
-	if !s.disabled() {
+	if s.disabled() {
+		// A process can stop after persisting OFF but before removing routes.
+		// Finish that OFF intent on retry/startup before clearing the journal.
+		if _, e = s.run("sh", filepath.Join(s.root, "vpn.sh"), "stop"); e != nil {
+			return errors.New("не удалось остановить маршрутизацию; журнал восстановления сохранён")
+		}
+	} else {
 		if e = restart(); e != nil {
 			return e
 		}
