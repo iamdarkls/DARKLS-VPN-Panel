@@ -1,69 +1,30 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { api } from '../api';
-import type { Connectivity, Dependencies, Diagnosis, ServiceResult } from '../types';
-import { devices, loadDevices, probeFacts, refreshStatus } from '../store';
-import { services } from '../composables/ui';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import DataTable from '../components/DataTable.vue';
 import ActionButton from '../components/ActionButton.vue';
-const service = ref('chatgpt'),
-  serviceResult = ref<ServiceResult>(),
-  domain = ref(''),
-  device = ref(''),
-  diagnosis = ref<Diagnosis>(),
-  connectivity = ref<Connectivity>(),
-  dependencyService = ref('instagram'),
-  dependencies = ref<Dependencies>();
-const rows = computed(() => {
-  const c = connectivity.value;
-  if (!c) return [];
-  return [
-    [
-      'Диагностика',
-      c.complete === false ? 'Не завершена: часть результатов неизвестна' : 'Завершена',
-    ],
-    ['Часы', c.clock ? 'Синхронизированы' : 'Ожидаем NTP'],
-    ['Xray', c.xray],
-    ['Процесс DNS helper', c.dns_process],
-    ['DNS helper', c.local_dns],
-    ['DNS Xray', c.tunnel_dns],
-    ['Правила', c.rules],
-    ['Прямой HTTPS', c.traffic_checked ? c.direct_internet : 'Не проверен'],
-    ['TCP VPN-сервера', c.traffic_checked ? c.server_tcp : 'Не проверен'],
-    ['HTTPS через VPN', c.traffic_checked ? c.tunnel_https : 'Не проверен'],
-  ].map(
-    ([k, v]) =>
-      [
-        String(k),
-        typeof v === 'boolean'
-          ? v
-            ? 'Ответил / исправен'
-            : 'Не подтверждён'
-          : String(v ?? 'Не проверен'),
-      ] as [string, string]
-  );
-});
-const dependencyRows = computed(
-  () =>
-    dependencies.value?.rows.map((r) => ({
-      domain: r.domain,
-      dns: r.dns,
-      route: r.configured
-        ? 'Выбран группой: ' + r.groups.join(', ')
-        : 'Нет включённого доменного правила',
-      ip: r.addresses.join(', ') || 'Нет A-записи',
-      set: r.in_vpn_set ? 'Да' : 'Нет',
-      https: r.https?.message || 'Не проверен',
-    })) || []
-);
-async function diagnose() {
-  diagnosis.value = await api<Diagnosis>('diagnose', 'POST', {
-    domain: domain.value,
-    device_mac: device.value,
-  });
-}
+import { useDiagnostics } from '../composables/useDiagnostics';
+const {
+  checkDependencies,
+  checkConnectivity,
+  probeTunnel,
+  probeService,
+  service,
+  services,
+  serviceResult,
+  probeFacts,
+  device,
+  devices,
+  domain,
+  diagnose,
+  diagnosis,
+  connectivity,
+  rows,
+  dependencyService,
+  dependencies,
+  dependencyRows,
+  loadDevices,
+} = useDiagnostics();
 defineExpose({ refresh: loadDevices });
 </script>
 <template>
@@ -76,16 +37,7 @@ defineExpose({ refresh: loadDevices });
         <select id="service-probe-select" v-model="service" aria-label="Сервис">
           <option v-for="[id, name] in services" :key="id" :value="id">{{ name }}</option>
         </select>
-        <ActionButton
-          kind="primary"
-          :action="
-            async () => {
-              serviceResult = await api<ServiceResult>('service-probe', 'POST', { service });
-            }
-          "
-        >
-          Проверить HTTPS
-        </ActionButton>
+        <ActionButton kind="primary" :action="probeService">Проверить HTTPS</ActionButton>
       </form>
       <Facts
         v-if="serviceResult"
@@ -99,17 +51,7 @@ defineExpose({ refresh: loadDevices });
       />
     </PanelBox>
     <PanelBox title="Соединение через VPN">
-      <ActionButton
-        id="probe-now"
-        :action="
-          async () => {
-            await api('probe', 'POST', {});
-            await refreshStatus();
-          }
-        "
-      >
-        Проверить сейчас
-      </ActionButton>
+      <ActionButton id="probe-now" :action="probeTunnel">Проверить сейчас</ActionButton>
       <Facts id="probe-details" :rows="probeFacts" />
     </PanelBox>
     <PanelBox
@@ -169,15 +111,7 @@ defineExpose({ refresh: loadDevices });
       title="Что именно не отвечает"
       description="Прямой HTTPS, TCP VPN-сервера, DNS, правила и общий туннель проверяются отдельно. Проверка ограничена 45 секундами."
     >
-      <ActionButton
-        :action="
-          async () => {
-            connectivity = await api<Connectivity>('connectivity', 'POST', {});
-          }
-        "
-      >
-        Проверить связь
-      </ActionButton>
+      <ActionButton :action="checkConnectivity">Проверить связь</ActionButton>
       <Facts :rows="rows" />
       <p v-for="(value, key) in connectivity?.errors" :key="key" class="tiny muted">
         {{ key }}: {{ value }}
@@ -198,17 +132,7 @@ defineExpose({ refresh: loadDevices });
           <option v-for="[id, name] in services" :key="id" :value="id">{{ name }}</option>
         </select>
       </label>
-      <ActionButton
-        :action="
-          async () => {
-            dependencies = await api<Dependencies>('dependencies', 'POST', {
-              service: dependencyService,
-            });
-          }
-        "
-      >
-        Проверить зависимости
-      </ActionButton>
+      <ActionButton :action="checkDependencies">Проверить зависимости</ActionButton>
       <template v-if="dependencies">
         <DataTable
           :rows="dependencyRows"

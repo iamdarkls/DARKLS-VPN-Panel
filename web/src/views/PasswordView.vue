@@ -1,30 +1,8 @@
 <script setup lang="ts">
-import { reactive } from 'vue';
-import { api } from '../api';
-import { auth, dirty, logoutLocal } from '../store';
-import { useAction } from '../composables/ui';
 import PanelBox from '../components/PanelBox.vue';
-const form = reactive({ current: '', password: '', confirm: '' });
-const { pending, run } = useAction();
-async function save() {
-  if (form.password !== form.confirm) throw new Error('Новые пароли не совпадают.');
-  if (
-    dirty.value &&
-    !confirm(
-      'Есть несохранённые изменения. После смены пароля потребуется повторный вход. Продолжить?'
-    )
-  )
-    return;
-  try {
-    await api('password', 'POST', { current: form.current, password: form.password });
-    logoutLocal();
-    auth.error = 'Пароль изменён. Войди с новым паролем.';
-  } finally {
-    form.current = '';
-    form.password = '';
-    form.confirm = '';
-  }
-}
+
+import { usePassword } from '../composables/usePassword';
+const { run, save, form, pending } = usePassword();
 </script>
 <template>
   <section id="settings-view">

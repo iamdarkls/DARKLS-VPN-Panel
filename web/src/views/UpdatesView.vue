@@ -1,71 +1,29 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { api } from '../api';
-import type { ReleaseStatus, Job } from '../types';
-import { busy, cleanDraft, waitForPanelUpdate } from '../store';
-import { stamp, useAction } from '../composables/ui';
+import { ref } from 'vue';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import ActionButton from '../components/ActionButton.vue';
 import CoreUpdates from './CoreUpdates.vue';
+import { useUpdates } from '../composables/useUpdates';
+const core = ref<InstanceType<typeof CoreUpdates>>();
+const {
+  check,
+  github,
+  stamp,
+  run,
+  install,
+  githubPassword,
+  pending,
+  busy,
+  latest,
+  githubProgress,
+  upload,
+  uploadFile,
+  uploadPassword,
+  uploadProgress,
+  refresh,
+} = useUpdates(core);
 defineProps<{ tab: string }>();
-const github = ref<ReleaseStatus>({}),
-  githubPassword = ref(''),
-  githubProgress = ref(''),
-  uploadPassword = ref(''),
-  uploadFile = ref<File>(),
-  uploadProgress = ref(''),
-  core = ref<InstanceType<typeof CoreUpdates>>();
-const { pending, run } = useAction();
-const latest = computed(() =>
-  github.value.available && github.value.signed ? github.value.latest : ''
-);
-async function load() {
-  github.value = await api<ReleaseStatus>('github');
-}
-async function install() {
-  cleanDraft();
-  const version = latest.value;
-  if (!version) throw new Error('Сначала проверь обновления.');
-  busy.value = true;
-  githubProgress.value = 'Загружаем выпуск и проверяем подпись…';
-  try {
-    const d = await api<{ job: Job }>('github-install', 'POST', {
-      password: githubPassword.value,
-      version,
-    });
-    githubPassword.value = '';
-    await waitForPanelUpdate(d.job, (m) => (githubProgress.value = m));
-  } finally {
-    githubPassword.value = '';
-    busy.value = false;
-  }
-}
-async function upload() {
-  cleanDraft();
-  if (!uploadFile.value || uploadFile.value.size > 8 * 1024 * 1024)
-    throw new Error('Выбери пакет ZIP размером до 8 МиБ.');
-  const form = new FormData();
-  form.append('password', uploadPassword.value);
-  form.append('package', uploadFile.value);
-  busy.value = true;
-  uploadProgress.value = 'Загружаем и проверяем пакет…';
-  let accepted = false;
-  try {
-    const d = await api<{ job: Job }>('update', 'POST', form, true);
-    accepted = true;
-    uploadPassword.value = '';
-    await waitForPanelUpdate(d.job, (m) => (uploadProgress.value = m));
-  } finally {
-    uploadPassword.value = '';
-    busy.value = false;
-    if (!accepted) uploadProgress.value = 'Пакет не установлен.';
-  }
-}
-async function refresh(tab = 'panel') {
-  if (tab === 'panel') await load();
-  else if (tab === 'core') await core.value?.refresh();
-}
 defineExpose({ refresh });
 </script>
 <template>
@@ -83,16 +41,7 @@ defineExpose({ refresh });
         class="wide"
         description="Источник: iamdarkls/DARKLS-VPN-Panel. Проверяем раз в сутки; установка только по кнопке. Подпись Ed25519 подтверждает автора пакета. Ядро обновляется во вкладке «Ядро Xray»."
       >
-        <ActionButton
-          id="github-check"
-          :action="
-            async () => {
-              github = await api<ReleaseStatus>('github-check', 'POST', {});
-            }
-          "
-        >
-          Проверить обновления
-        </ActionButton>
+        <ActionButton id="github-check" :action="check">Проверить обновления</ActionButton>
         <Facts
           id="github-status"
           :rows="[

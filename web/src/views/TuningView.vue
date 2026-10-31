@@ -1,64 +1,26 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { api } from '../api';
-import { cleanDraft, temporaryGroup } from '../store';
-import { services, notice } from '../composables/ui';
 import PanelBox from '../components/PanelBox.vue';
 import DataTable from '../components/DataTable.vue';
 import Facts from '../components/Facts.vue';
 import ActionButton from '../components/ActionButton.vue';
-const group = ref('instagram'),
-  quic = ref('true'),
-  preset = ref('reuse2'),
-  password = ref(''),
-  via = ref('direct');
-interface Benchmark {
-  results: {
-    preset: string;
-    samples: number;
-    failures: number;
-    median_ms: number;
-    download_bytes: number;
-    download_mbps: number;
-    error?: string;
-  }[];
-  note: string;
-}
-interface LoadResult {
-  idle_ms?: number;
-  load_ms?: number;
-  failures: number;
-  bytes: number;
-  enough_samples: boolean;
-  note: string;
-}
-const benchmark = ref<Benchmark>(),
-  load = ref<LoadResult>();
-const rows = computed(
-  () =>
-    benchmark.value?.results.map((r) => ({
-      name: r.preset,
-      median: r.samples - r.failures > 0 ? r.median_ms.toFixed(0) + ' мс' : 'Нет успешных проб',
-      fail: r.failures + '/' + r.samples,
-      speed: r.download_bytes ? r.download_mbps.toFixed(2) + ' Мбит/с' : 'Нет данных',
-      error: r.error || '—',
-    })) || []
-);
-async function apply() {
-  cleanDraft();
-  if (
-    !confirm(
-      'После изолированной проверки Xray перезапустится. Текущие VPN-соединения переподключатся. Продолжить?'
-    )
-  )
-    return;
-  try {
-    await api('xhttp-apply', 'POST', { preset: preset.value, password: password.value });
-    notice('Параметры применены после проверки. При ошибке предусмотрен откат.');
-  } finally {
-    password.value = '';
-  }
-}
+
+import { useTuning } from '../composables/useTuning';
+const {
+  measureLoad,
+  compare,
+  observe,
+  group,
+  services,
+  quic,
+  temporaryGroup,
+  benchmark,
+  rows,
+  preset,
+  password,
+  apply,
+  via,
+  load,
+} = useTuning();
 defineExpose({ refresh: async () => {} });
 </script>
 <template>
@@ -94,12 +56,7 @@ defineExpose({ refresh: async () => {} });
           ['failed', 'Не работает'],
         ]"
         :key="verdict"
-        :action="
-          async () => {
-            await api('quic-observation', 'POST', { group, verdict });
-            notice('Оценка сохранена в истории.');
-          }
-        "
+        :action="() => observe(verdict!)"
       >
         {{ label }}
       </ActionButton>
@@ -108,16 +65,7 @@ defineExpose({ refresh: async () => {} });
       title="Сравнить параметры XHTTP"
       description="Текущие параметры, 2 и 4 соединения проверяются последовательно отдельным Xray. До 3 МиБ загрузок плюс HTTPS; нужен запас 96 МиБ RAM. Рабочий канал не меняется. Короткий тест не подтверждает длительную стабильность."
     >
-      <ActionButton
-        :action="
-          async () => {
-            cleanDraft();
-            benchmark = await api<Benchmark>('xhttp-benchmark', 'POST', {});
-          }
-        "
-      >
-        Сравнить три варианта
-      </ActionButton>
+      <ActionButton :action="compare">Сравнить три варианта</ActionButton>
       <template v-if="benchmark">
         <DataTable
           :rows="rows"
@@ -156,15 +104,7 @@ defineExpose({ refresh: async () => {} });
           <option value="vpn">Через VPN</option>
         </select>
       </label>
-      <ActionButton
-        :action="
-          async () => {
-            load = await api<LoadResult>('load-test', 'POST', { via });
-          }
-        "
-      >
-        Измерить задержку под нагрузкой
-      </ActionButton>
+      <ActionButton :action="measureLoad">Измерить задержку под нагрузкой</ActionButton>
       <template v-if="load">
         <Facts
           :rows="[
