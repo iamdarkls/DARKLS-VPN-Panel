@@ -33,15 +33,19 @@ var githubPublicKey = assets.GitHubPublicKey
 var githubRoots = assets.GitHubRoots
 
 type GitHubStatus struct {
-	Configured bool   `json:"configured"`
-	CheckedAt  int64  `json:"checked_at"`
-	Current    string `json:"current"`
-	Latest     string `json:"latest,omitempty"`
-	Available  bool   `json:"available"`
-	Signed     bool   `json:"signed"`
-	Notes      string `json:"notes,omitempty"`
-	URL        string `json:"url"`
-	Error      string `json:"error,omitempty"`
+	Channel           string `json:"channel"`
+	InstalledChannel  string `json:"installed_channel"`
+	Prerelease        bool   `json:"prerelease"`
+	RollbackAvailable bool   `json:"rollback_available"`
+	Configured        bool   `json:"configured"`
+	CheckedAt         int64  `json:"checked_at"`
+	Current           string `json:"current"`
+	Latest            string `json:"latest,omitempty"`
+	Available         bool   `json:"available"`
+	Signed            bool   `json:"signed"`
+	Notes             string `json:"notes,omitempty"`
+	URL               string `json:"url"`
+	Error             string `json:"error,omitempty"`
 }
 type SignedRelease struct {
 	Format     int    `json:"format"`
@@ -179,18 +183,47 @@ func fetchGitHubRelease(ctx context.Context) (GitHubStatus, SignedRelease, strin
 	return fetchGitHubReleaseWith(ctx, trustedReleaseKey(), githubGet)
 }
 func fetchGitHubReleaseWith(ctx context.Context, key ed25519.PublicKey, get func(context.Context, string, int64) ([]byte, error)) (GitHubStatus, SignedRelease, string, error) {
-	status := GitHubStatus{Configured: len(key) > 0, CheckedAt: time.Now().Unix(), Current: version, URL: "https://github.com/" + githubRepository + "/releases"}
+	return fetchPanelChannelWith(ctx, key, get, "stable", false)
+}
+func fetchPanelChannelWith(ctx context.Context, key ed25519.PublicKey, get func(context.Context, string, int64) ([]byte, error), channel string, allowOlder bool) (GitHubStatus, SignedRelease, string, error) {
+	status := GitHubStatus{Channel: channel, InstalledChannel: panelReleaseChannel, Configured: len(key) > 0, CheckedAt: time.Now().Unix(), Current: version, URL: "https://github.com/" + githubRepository + "/releases"}
 	var manifest SignedRelease
 	if !status.Configured {
 		return status, manifest, "", errors.New("источник ещё не настроен: установите первый Release из своего репозитория после Publish-GitHub.ps1")
 	}
-	data, e := get(ctx, "https://api.github.com/repos/"+githubRepository+"/releases/latest", 256<<10)
+	if !validPanelChannel(channel) {
+		return status, manifest, "", errors.New("неверный канал")
+	}
+	endpoint := "https://api.github.com/repos/" + githubRepository + "/releases/latest"
+	if channel == "preview" {
+		endpoint = "https://api.github.com/repos/" + githubRepository + "/releases?per_page=30"
+	}
+	data, e := get(ctx, endpoint, 512<<10)
 	if e != nil {
 		return status, manifest, "", e
 	}
 	var rel ghRelease
-	if json.Unmarshal(data, &rel) != nil || rel.Draft || rel.Prerelease {
-		return status, manifest, "", errors.New("нет подходящего стабильного выпуска")
+	if channel == "stable" {
+		if json.Unmarshal(data, &rel) != nil || rel.Draft || rel.Prerelease {
+			return status, manifest, "", errors.New("нет подходящего стабильного выпуска")
+		}
+	} else {
+		var releases []ghRelease
+		if json.Unmarshal(data, &releases) != nil {
+			return status, manifest, "", errors.New("неверный список выпусков")
+		}
+		for _, candidate := range releases {
+			v := strings.TrimPrefix(candidate.Tag, "v")
+			if candidate.Draft || !releasePattern.MatchString(v) {
+				continue
+			}
+			if rel.Tag == "" || releaseAtLeast(v, strings.TrimPrefix(rel.Tag, "v")) {
+				rel = candidate
+			}
+		}
+		if rel.Tag == "" {
+			return status, manifest, "", errors.New("подходящий выпуск не найден")
+		}
 	}
 	assets := map[string]ghAsset{}
 	for _, a := range rel.Assets {
@@ -215,10 +248,19 @@ func fetchGitHubReleaseWith(ctx context.Context, key ed25519.PublicKey, get func
 	if e != nil {
 		return status, manifest, "", e
 	}
-	manifest, e = verifySignedRelease(data, sig, key, version, runtime.GOARCH)
+	floor := version
+	if allowOlder && channel == "stable" {
+		floor = "2.1.3"
+	}
+	manifest, e = verifySignedRelease(data, sig, key, floor, runtime.GOARCH)
 	if e != nil {
 		return status, manifest, "", e
 	}
+	signedChannel := signedPanelChannel(data)
+	if !validPanelChannel(signedChannel) || (signedChannel == "preview") != rel.Prerelease {
+		return status, manifest, "", errors.New("канал выпуска не совпадает с подписью")
+	}
+	status.Prerelease = rel.Prerelease
 	if rel.Tag != "v"+manifest.Version {
 		return status, manifest, "", errors.New("тег не совпадает с подписанной версией")
 	}
@@ -231,7 +273,8 @@ func fetchGitHubReleaseWith(ctx context.Context, key ed25519.PublicKey, get func
 		return status, manifest, "", errors.New("пакет принадлежит другому адресу выпуска")
 	}
 	status.Latest = manifest.Version
-	status.Available = manifest.Version != version
+	status.Available = manifest.Version != version && releaseAtLeast(manifest.Version, version)
+	status.RollbackAvailable = allowOlder && channel == "stable" && manifest.Version != version && !status.Available
 	status.Signed = true
 	status.Notes = rel.Body
 	if len(status.Notes) > 8192 {
@@ -243,18 +286,24 @@ func fetchGitHubReleaseWith(ctx context.Context, key ed25519.PublicKey, get func
 func (s *Server) githubStatus() GitHubStatus {
 	var st GitHubStatus
 	_ = readJSON("/tmp/darkls-github-status.json", &st)
+	if st.Channel != s.panelUpdateChannel() {
+		st = GitHubStatus{}
+	}
+	st.Channel = s.panelUpdateChannel()
+	st.InstalledChannel = panelReleaseChannel
 	st.Current = version
 	st.Configured = len(trustedReleaseKey()) > 0
 	if st.URL == "" {
 		st.URL = "https://github.com/" + githubRepository + "/releases"
 	}
+	st.RollbackAvailable = panelReleaseChannel == "preview" && st.Channel == "stable" && st.Latest != "" && !releaseAtLeast(st.Latest, version)
 	if st.Latest != "" {
 		st.Available = st.Latest != version && releaseAtLeast(st.Latest, version)
 	}
 	return st
 }
 func (s *Server) checkGitHub(ctx context.Context) GitHubStatus {
-	st, _, _, e := fetchGitHubRelease(ctx)
+	st, _, _, e := fetchPanelChannelWith(ctx, trustedReleaseKey(), githubGet, s.panelUpdateChannel(), panelReleaseChannel == "preview" && s.panelUpdateChannel() == "stable")
 	if e != nil {
 		st.Error = redact(e.Error())
 	}
@@ -294,6 +343,7 @@ func (s *Server) githubAPI(w http.ResponseWriter, r *http.Request, install bool)
 	var req struct {
 		Password string `json:"password"`
 		Version  string `json:"version"`
+		Rollback bool   `json:"rollback"`
 	}
 	if e := decode(w, r, &req); e != nil {
 		fail(w, 400, e)
@@ -309,12 +359,18 @@ func (s *Server) githubAPI(w http.ResponseWriter, r *http.Request, install bool)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 150*time.Second)
 	defer cancel()
-	st, m, asset, e := fetchGitHubRelease(ctx)
+	channel := s.panelUpdateChannel()
+	allowOlder := req.Rollback && panelReleaseChannel == "preview" && channel == "stable"
+	if req.Rollback && !allowOlder {
+		fail(w, 400, errors.New("возврат доступен только с тестовой сборки на стабильный канал"))
+		return
+	}
+	st, m, asset, e := fetchPanelChannelWith(ctx, trustedReleaseKey(), githubGet, channel, allowOlder)
 	if e != nil {
 		fail(w, 502, e)
 		return
 	}
-	if !st.Available || req.Version != m.Version {
+	if (!st.Available && !(allowOlder && st.RollbackAvailable)) || req.Version != m.Version {
 		fail(w, 409, errors.New("версия изменилась или уже установлена; проверьте обновления снова"))
 		return
 	}
@@ -331,7 +387,7 @@ func (s *Server) githubAPI(w http.ResponseWriter, r *http.Request, install bool)
 		return
 	}
 	defer f.Close()
-	dir, pm, e := stagePackage(f, m.Size)
+	dir, pm, e := stagePackageFor(f, m.Size, allowOlder)
 	if e != nil {
 		fail(w, 400, e)
 		return
@@ -348,7 +404,7 @@ func (s *Server) githubAPI(w http.ResponseWriter, r *http.Request, install bool)
 		return
 	}
 	defer release()
-	job, e := s.launchUpdate(dir, m.Version)
+	job, e := s.launchUpdateFor(dir, m.Version, allowOlder)
 	if e != nil {
 		os.RemoveAll(dir)
 		fail(w, 500, e)
@@ -403,11 +459,20 @@ func downloadVerifiedAsset(ctx context.Context, raw string, size int64, hash, di
 	return "", errors.New(strings.Join(failures, "; "))
 }
 func (s *Server) launchUpdate(dir, target string) (UpdateJob, error) {
+	return s.launchUpdateFor(dir, target, false)
+}
+func (s *Server) launchUpdateFor(dir, target string, rollback bool) (UpdateJob, error) {
 	job := UpdateJob{ID: token()[:16], Phase: "staged", Target: target, Message: "Пакет проверен, начинается установка", Started: time.Now().Unix()}
 	if e := atomicWrite(updateJobPath, jsonBytes(job)); e != nil {
 		return job, e
 	}
-	cmd := exec.Command(filepath.Join(s.dir, "darkls-panel"), "--root", s.root, "--install-staged", dir)
+	worker := filepath.Join(s.dir, "darkls-panel")
+	// A verified stable target validates its own version during an explicit return.
+	// Manual uploads and ordinary installs still use the running version's floor.
+	if rollback {
+		worker = filepath.Join(dir, "darkls-panel")
+	}
+	cmd := exec.Command(worker, "--root", s.root, "--install-staged", dir)
 	f, e := os.OpenFile("/tmp/darkls-update-worker.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if e == nil {
 		cmd.Stdout = f

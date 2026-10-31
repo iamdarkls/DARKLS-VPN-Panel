@@ -1,6 +1,8 @@
+import { useUnsavedForm } from './useUnsavedForm';
 import { computed, reactive, ref } from 'vue';
 import type { Group } from '../types';
-import { draft, catalogNotes, busy, temporaryGroup } from '../store';
+import { draft, catalogNotes, temporaryGroup } from '../stores/draft';
+import { busy } from '../stores/sessionState';
 import { stamp } from './ui';
 
 /** Catalog filtering and group drafts; changes stay local until the shared apply transaction.
@@ -60,6 +62,13 @@ export function useSites() {
       gs.length + ' групп включено · ' + new Set(gs.flatMap((g) => g.domains)).size + ' доменов'
     );
   });
+  const editorGuard = useUnsavedForm(
+    () => ({ ...form }),
+    () => open.value
+  );
+  function close() {
+    if (editorGuard.confirmDiscard()) open.value = false;
+  }
   function edit(i: number) {
     editing.value = i;
     const g = draft.value?.groups[i];
@@ -70,6 +79,7 @@ export function useSites() {
       quic: g?.block_quic ?? g?.id === 'youtube',
     });
     open.value = true;
+    editorGuard.markClean();
   }
   function toggle(g: Group) {
     g.enabled = !g.enabled;
@@ -115,6 +125,7 @@ export function useSites() {
     }
   }
   return {
+    close,
     search,
     filter,
     categories,

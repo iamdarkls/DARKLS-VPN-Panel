@@ -146,7 +146,13 @@ func (s *Server) restart() error {
 	return nil
 }
 
-func (s *Server) apply(st State, expected string) (backup string, err error) {
+func (s *Server) apply(st State, expected string, operationID ...string) (backup string, err error) {
+	id := token()[:32]
+	if len(operationID) > 0 && idPattern.MatchString(operationID[0]) {
+		id = operationID[0]
+	}
+	s.beginApply(id)
+	defer func() { s.finishApply(err) }()
 	st, err = validate(st)
 	if err != nil {
 		return "", err
@@ -191,16 +197,19 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 			return "", err
 		}
 	}
+	s.applyStage("backup", "")
 	backup, err = s.backup()
 	if err != nil {
 		return "", err
 	}
+	s.applyStage("saving", backup)
 	journal := filepath.Join(s.dir, "apply-journal.json")
 	if err = atomicWrite(journal, jsonBytes(map[string]string{"backup": backup})); err != nil {
 		return "", err
 	}
 	defer func() {
 		if err != nil {
+			s.applyStage("rollback", backup)
 			re := s.restoreFiles(backup)
 			rr := s.reloadRouting(true, true)
 			if re == nil {
@@ -217,7 +226,9 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 			}
 			err = fmt.Errorf("%v; прежние настройки восстановлены", err)
 		}
-		_ = os.Remove(journal)
+		if e := os.Remove(journal); e != nil && !os.IsNotExist(e) {
+			err = fmt.Errorf("не удалось завершить журнал применения: %w", e)
+		}
 	}()
 	domains := strings.Join(activeDomains(st), "\n")
 	if domains != "" {
@@ -240,6 +251,7 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 			return backup, err
 		}
 	}
+	s.applyStage("routing", backup)
 	if err = s.reloadRouting(!bytes.Equal(oldConfig, config), !bytes.Equal(oldTG, tg)); err != nil {
 		return backup, err
 	}
@@ -252,6 +264,10 @@ func (s *Server) apply(st State, expected string) (backup string, err error) {
 		if err = s.syncGroupRouting(); err != nil {
 			return backup, err
 		}
+	}
+	s.applyStage("verification", backup)
+	if err = s.verifyApplied(st); err != nil {
+		return backup, err
 	}
 	appendEvent("settings", "Настройки сайтов и устройств применены")
 	s.prune()

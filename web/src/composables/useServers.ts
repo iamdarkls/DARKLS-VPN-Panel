@@ -1,7 +1,10 @@
+import { useUnsavedForm } from './useUnsavedForm';
+import { registerUnsaved } from '../stores/forms';
 import { ref, reactive, onUnmounted } from 'vue';
 import { api } from '../api';
 import type { Connections, ServerItem, Profile } from '../types';
-import { cleanDraft, refreshStatus } from '../store';
+import { cleanDraft } from '../stores/draft';
+import { refreshStatus } from '../stores/vpn';
 import { clone, notice, stamp, useAction } from './ui';
 import { fieldLabels, emptyFields, unpack, pack, fieldVisible } from '../outbound';
 import type { Outbound, Field } from '../outbound';
@@ -44,6 +47,11 @@ export function useServers() {
       ['multi', 'Multi — многопоточный'],
     ],
   };
+  const editorGuard = useUnsavedForm(
+    () => ({ name: name.value, raw: raw.value, mode: mode.value, fields: { ...fields } }),
+    () => editorOpen.value
+  );
+  registerUnsaved(() => !!backupRaw.value.trim());
   function clearEditor() {
     base.value = undefined;
     id.value = '';
@@ -53,9 +61,13 @@ export function useServers() {
     Object.assign(fields, emptyFields());
   }
   function closeEditor() {
-    if (pending.value) return;
+    if (pending.value || !editorGuard.confirmDiscard()) return;
+    finishEditor();
+  }
+  function finishEditor() {
     editorOpen.value = false;
     clearEditor();
+    editorGuard.forget();
   }
   function openEditor(item?: ServerItem, out?: Outbound) {
     clearEditor();
@@ -73,6 +85,7 @@ export function useServers() {
           : 'link';
     }
     editorOpen.value = true;
+    editorGuard.markClean();
   }
   async function request<T>(path: string, body: Record<string, unknown>): Promise<T> {
     if (pending.value) throw new Error('Проверка сервера ещё выполняется.');
@@ -106,7 +119,7 @@ export function useServers() {
       name: name.value.trim(),
       outbound: payload(),
     });
-    closeEditor();
+    finishEditor();
     await load();
     notice('Сервер сохранён. Для переключения нажми «Подключить» на его карточке.');
   }
@@ -119,7 +132,7 @@ export function useServers() {
     )
       return;
     await request('connection-apply', { outbound: payload() });
-    closeEditor();
+    finishEditor();
     await load();
     await refreshStatus();
     notice('Основное подключение изменено и проверено.');

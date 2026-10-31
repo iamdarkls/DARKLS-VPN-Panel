@@ -86,8 +86,16 @@ func run(mode, private, public, archive, version, out string) error {
 	if e != nil {
 		return e
 	}
+	channel := os.Getenv("PANEL_RELEASE_CHANNEL")
+	if channel == "" {
+		channel = "stable"
+	}
+	if channel != "stable" && channel != "preview" {
+		return fmt.Errorf("invalid panel release channel")
+	}
 	sum := sha256.Sum256(b)
 	m := struct {
+		Channel    string `json:"channel"`
 		Format     int    `json:"format"`
 		Kind       string `json:"kind"`
 		Repository string `json:"repository"`
@@ -96,7 +104,7 @@ func run(mode, private, public, archive, version, out string) error {
 		Asset      string `json:"asset"`
 		SHA256     string `json:"sha256"`
 		Size       int    `json:"size"`
-	}{1, "panel", "iamdarkls/DARKLS-VPN-Panel", version, "arm64", filepath.Base(archive), hex.EncodeToString(sum[:]), len(b)}
+	}{channel, 1, "panel", "iamdarkls/DARKLS-VPN-Panel", version, "arm64", filepath.Base(archive), hex.EncodeToString(sum[:]), len(b)}
 	data, e := json.MarshalIndent(m, "", "  ")
 	if e != nil {
 		return e

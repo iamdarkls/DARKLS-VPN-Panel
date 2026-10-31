@@ -51,8 +51,9 @@ func (s *Server) publicUpdateStatus(w http.ResponseWriter) {
 	j := readUpdateJob()
 	respond(w, 200, map[string]any{"version": version, "job": j})
 }
-func validateManifest(m PackageManifest) error {
-	if !releaseAtLeast(m.Version, "1.1.0") || !releaseAtLeast(m.Version, version) {
+func validateManifest(m PackageManifest) error { return validateManifestFor(m, false) }
+func validateManifestFor(m PackageManifest, allowOlder bool) error {
+	if !releaseAtLeast(m.Version, "1.1.0") || (!allowOlder && !releaseAtLeast(m.Version, version)) {
 		return errors.New("версия пакета старее установленной или несовместима")
 	}
 	if m.Format != 1 || m.Arch != runtime.GOARCH || !releasePattern.MatchString(m.Version) || len(m.Files) != len(packageNames) {
@@ -82,6 +83,9 @@ func validateManifest(m PackageManifest) error {
 	return nil
 }
 func stagePackage(reader io.ReaderAt, size int64) (dir string, m PackageManifest, err error) {
+	return stagePackageFor(reader, size, false)
+}
+func stagePackageFor(reader io.ReaderAt, size int64, allowOlder bool) (dir string, m PackageManifest, err error) {
 	z, e := zip.NewReader(reader, size)
 	if e != nil {
 		return "", m, errors.New("неверный ZIP-архив")
@@ -122,7 +126,7 @@ func stagePackage(reader io.ReaderAt, size int64) (dir string, m PackageManifest
 	if e = json.Unmarshal(data, &m); e != nil {
 		return "", m, e
 	}
-	if e = validateManifest(m); e != nil {
+	if e = validateManifestFor(m, allowOlder); e != nil {
 		return "", m, e
 	}
 	dir, e = os.MkdirTemp("/tmp", "darkls-update-")

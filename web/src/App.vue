@@ -1,22 +1,13 @@
 <script setup lang="ts">
+import { applyPhaseLabel, applyStepLabel, applyStateLabel } from './labels';
+import { applyProgress, dismissApplyProgress } from './stores/draft';
+import { hasUnsavedForms } from './stores/forms';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { api } from './api';
-import {
-  auth,
-  dirty,
-  busy,
-  status,
-  preview,
-  login,
-  logoutLocal,
-  initialize,
-  refreshStatus,
-  prepareApply,
-  cancelApply,
-  apply,
-  discard,
-  setPower,
-} from './store';
+import { auth, login, logoutLocal, initialize } from './stores/session';
+import { dirty, preview, prepareApply, cancelApply, apply, discard } from './stores/draft';
+import { busy } from './stores/sessionState';
+import { status, refreshStatus, setPower } from './stores/vpn';
 import { theme } from './composables/theme';
 import { useAction, perform, errorMessage, stamp, usePolling } from './composables/ui';
 import { views, menus, tabs } from './navigation';
@@ -135,7 +126,7 @@ async function submitLogin() {
   }
 }
 async function logout() {
-  if (dirty.value && !confirm('Выйти без сохранения?')) return;
+  if ((dirty.value || hasUnsavedForms.value) && !confirm('Выйти без сохранения?')) return;
   try {
     await api('logout', 'POST', {});
   } finally {
@@ -167,7 +158,7 @@ const description = computed(() =>
         'Ожидаем свежую HTTPS-проверку автоконтроля.'
 );
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (dirty.value) {
+  if (dirty.value || hasUnsavedForms.value) {
     event.preventDefault();
     event.returnValue = '';
   }
@@ -421,6 +412,26 @@ onUnmounted(() => {
 
       <PasswordView v-show="view === 'settings'" />
     </main>
+    <Modal
+      :open="!!applyProgress"
+      :pending="busy"
+      label="Применение настроек"
+      @close="dismissApplyProgress"
+    >
+      <section v-if="applyProgress" id="apply-progress" class="panel-box" aria-live="polite">
+        <strong>{{ applyPhaseLabel(applyProgress.phase) }}</strong>
+        <p>{{ applyProgress.message || 'Дождись завершения операции.' }}</p>
+        <ol>
+          <li v-for="step in applyProgress.steps" :key="step.name">
+            {{ applyStepLabel(step.name) }} · {{ applyStateLabel(step.state) }}
+          </li>
+        </ol>
+        <p v-if="applyProgress.backup" class="tiny muted">Копия: {{ applyProgress.backup }}</p>
+        <button v-if="!busy" class="secondary" @click="dismissApplyProgress">
+          Закрыть результат
+        </button>
+      </section>
+    </Modal>
     <footer id="savebar" ref="savebar" :class="{ 'has-changes': dirty || busy }">
       <div>
         <strong id="save-title">

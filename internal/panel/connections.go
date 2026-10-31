@@ -65,7 +65,7 @@ func (s *Server) connectionStatus() (map[string]any, error) {
 		rows = append(rows, row)
 	}
 	_, previousErr := os.Stat(filepath.Join(s.dir, "previous-connection.json"))
-	return map[string]any{"rollback_available": previousErr == nil, "items": rows, "current": connectionMeta(current), "limit": 20, "profile": s.profileStatus()}, nil
+	return map[string]any{"rollback_available": previousErr == nil, "items": rows, "current": connectionMeta(current), "limit": 20, "profile": s.profileStatus(), "history": s.switchHistory(), "current_id": s.activeConnectionID()}, nil
 }
 func (s *Server) connectionOutbound(id string) (map[string]any, error) {
 	if id == "previous" {
@@ -227,7 +227,14 @@ func (s *Server) commitPrimary(out map[string]any, restart, probe func() error) 
 	appendEvent("connection", "Основное подключение проверено и изменено")
 	return nil
 }
-func (s *Server) activateConnection(ctx context.Context, out map[string]any) error {
+func (s *Server) activateConnection(ctx context.Context, out map[string]any, reason ...string) (err error) {
+	from := s.activeConnectionID()
+	why := "manual"
+	if len(reason) > 0 {
+		why = reason[0]
+	}
+	defer func() { s.recordSwitch(from, out, why, err) }()
+
 	if e := s.testOutbound(ctx, out); e != nil {
 		return errors.New("Рабочее подключение сохранено. Проверка нового сервера: " + e.Error())
 	}
@@ -408,7 +415,7 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
 	defer cancel()
 	if path == "connection-use" || path == "connection-apply" || path == "connection-rollback" {
-		e = s.activateConnection(ctx, out)
+		e = s.activateConnection(ctx, out, path)
 	} else {
 		if e = s.testOutbound(ctx, out); e != nil {
 			e = errors.New("Изменения не сохранены. Проверка нового сервера: " + e.Error())

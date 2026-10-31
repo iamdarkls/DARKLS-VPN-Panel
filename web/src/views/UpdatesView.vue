@@ -7,6 +7,11 @@ import CoreUpdates from './CoreUpdates.vue';
 import { useUpdates } from '../composables/useUpdates';
 const core = ref<InstanceType<typeof CoreUpdates>>();
 const {
+  channel,
+  channelPassword,
+  channelChanged,
+  saveChannel,
+  returnStable,
   check,
   github,
   stamp,
@@ -41,11 +46,43 @@ defineExpose({ refresh });
         class="wide"
         description="Источник: iamdarkls/DARKLS-VPN-Panel. Проверяем раз в сутки; установка только по кнопке. Подпись Ed25519 подтверждает автора пакета. Ядро обновляется во вкладке «Ядро Xray»."
       >
+        <div class="settings-grid">
+          <label>
+            Канал обновлений панели
+            <select
+              aria-label="Канал обновлений панели"
+              v-model="channel"
+              @change="channelChanged = true"
+            >
+              <option value="stable">Стабильный</option>
+              <option value="preview">Стабильный + тестовый</option>
+            </select>
+          </label>
+          <label>
+            Пароль для смены канала
+            <input
+              id="github-channel-password"
+              v-model="channelPassword"
+              type="password"
+              autocomplete="current-password"
+            />
+          </label>
+          <ActionButton :action="saveChannel">Сохранить канал</ActionButton>
+        </div>
+        <p class="tiny muted">
+          Тестовые сборки устанавливаются только вручную. Xray обновляется независимо.
+        </p>
         <ActionButton id="github-check" :action="check">Проверить обновления</ActionButton>
         <Facts
           id="github-status"
           :rows="[
             ['Установлена', github.current],
+            [
+              'Канал установленной сборки',
+              github.installed_channel === 'preview' ? 'Тестовый' : 'Стабильный',
+            ],
+            ['Канал поиска', github.channel === 'preview' ? 'Стабильный + тестовый' : 'Стабильный'],
+            ['Тип найденного выпуска', github.prerelease ? 'Тестовый' : 'Стабильный'],
             ['Последний выпуск', github.latest || '—'],
             [
               'Подпись',
@@ -63,14 +100,20 @@ defineExpose({ refresh });
                   ? 'Первый Release из своего репозитория нужно установить ZIP-файлом.'
                   : !github.checked_at
                     ? 'Проверка ещё не выполнялась'
-                    : github.available
-                      ? 'Доступно обновление'
-                      : 'Обновлений нет'),
+                    : github.rollback_available
+                      ? 'Доступен возврат на стабильную версию'
+                      : github.available
+                        ? 'Доступно обновление'
+                        : 'Обновлений нет'),
             ],
           ]"
         />
         <pre id="github-notes" class="log-box">{{ github.notes || '' }}</pre>
-        <form v-show="latest" id="github-install-form" @submit.prevent="run(install)">
+        <form
+          v-show="latest || github.rollback_available"
+          id="github-install-form"
+          @submit.prevent="run(install)"
+        >
           <label>
             Текущий пароль
             <input
@@ -81,9 +124,17 @@ defineExpose({ refresh });
               required
             />
           </label>
-          <button class="primary" type="submit" :disabled="pending || busy">
+          <button v-if="latest" class="primary" type="submit" :disabled="pending || busy">
             Установить проверенный выпуск
           </button>
+          <ActionButton
+            v-if="github.rollback_available"
+            kind="danger"
+            :disabled="pending || busy"
+            :action="returnStable"
+          >
+            Вернуться на стабильный выпуск
+          </ActionButton>
         </form>
         <p id="github-progress" class="tiny muted" role="status">{{ githubProgress }}</p>
       </PanelBox>

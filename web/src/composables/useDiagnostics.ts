@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue';
 import { api } from '../api';
 import type { Connectivity, Dependencies, Diagnosis, ServiceResult } from '../types';
-import { devices, loadDevices, probeFacts, refreshStatus } from '../store';
+import { devices, loadDevices, probeFacts, refreshStatus } from '../stores/vpn';
 import { services } from './ui';
 
 /** Explicit diagnostic actions and their results; a service failure never restarts the tunnel.

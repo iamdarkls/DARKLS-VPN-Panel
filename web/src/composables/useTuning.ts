@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { api } from '../api';
-import { cleanDraft, temporaryGroup } from '../store';
+import { cleanDraft, temporaryGroup } from '../stores/draft';
 import { services, notice } from './ui';
 
 interface LoadResult {

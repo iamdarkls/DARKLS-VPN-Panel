@@ -1,5 +1,7 @@
 import { computed } from 'vue';
-import { draft, devices, busy, loadDevices } from '../store';
+import { draft } from '../stores/draft';
+import { devices, loadDevices } from '../stores/vpn';
+import { busy } from '../stores/sessionState';
 import type { Device } from '../types';
 
 /** Combine discovered devices with saved policy entries, including offline devices.

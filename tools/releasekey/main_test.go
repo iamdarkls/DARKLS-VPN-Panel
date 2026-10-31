@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,26 @@ func TestKeyGenerationIsStableAndReleaseSignatureVerifies(t *testing.T) {
 	if !ed25519.Verify(pub, b, sig) {
 		t.Fatal("signature did not verify")
 	}
+	t.Setenv("PANEL_RELEASE_CHANNEL", "preview")
+	if e := run("sign", "", pubPath, zip, "1.2.1", d); e != nil {
+		t.Fatal(e)
+	}
+	preview, _ := os.ReadFile(filepath.Join(d, "panel-release.json"))
+	var meta map[string]any
+	json.Unmarshal(preview, &meta)
+	if meta["channel"] != "preview" {
+		t.Fatal(meta)
+	}
+	previewSig, _ := os.ReadFile(filepath.Join(d, "panel-release.sig"))
+	decoded, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(string(previewSig)))
+	if !ed25519.Verify(pub, preview, decoded) {
+		t.Fatal("preview metadata signature invalid")
+	}
+	t.Setenv("PANEL_RELEASE_CHANNEL", "invalid")
+	if run("sign", "", pubPath, zip, "1.2.1", d) == nil {
+		t.Fatal("invalid channel signed")
+	}
+	t.Setenv("PANEL_RELEASE_CHANNEL", "stable")
 	os.WriteFile(pubPath, []byte("wrong public key"), 0644)
 	if run("sign", "", pubPath, zip, "1.2.1", d) == nil {
 		t.Fatal("signed using a different key than pinned in source")

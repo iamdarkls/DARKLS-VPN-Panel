@@ -110,6 +110,10 @@ func (s *Server) handler() http.Handler {
 			s.recoveryAPI(w, r)
 			return
 		}
+		if r.URL.Path == "/api/github-channel" {
+			s.panelChannelAPI(w, r)
+			return
+		}
 		if s.connectionAPI(w, r) {
 			return
 		}
@@ -126,6 +130,12 @@ func (s *Server) handler() http.Handler {
 			return
 		}
 		switch r.URL.Path {
+		case "/api/apply-status":
+			if r.Method != "GET" {
+				w.WriteHeader(405)
+				return
+			}
+			respond(w, 200, s.readApplyProgress())
 		case "/api/session":
 			if r.Method != "GET" {
 				w.WriteHeader(405)
@@ -209,14 +219,15 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/apply":
 		var req struct {
-			State    State  `json:"state"`
-			Revision string `json:"revision"`
+			State       State  `json:"state"`
+			Revision    string `json:"revision"`
+			OperationID string `json:"operation_id"`
 		}
 		if e := decode(w, r, &req); e != nil {
 			fail(w, 400, e)
 			return
 		}
-		id, e := s.apply(req.State, req.Revision)
+		id, e := s.apply(req.State, req.Revision, req.OperationID)
 		if e != nil {
 			code := 400
 			if strings.HasPrefix(e.Error(), "CONFLICT:") {
@@ -225,7 +236,7 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request) {
 			fail(w, code, e)
 			return
 		}
-		respond(w, 200, map[string]any{"ok": true, "backup": id, "revision": s.revision(), "disabled": s.disabled()})
+		respond(w, 200, map[string]any{"ok": true, "backup": id, "revision": s.revision(), "disabled": s.disabled(), "progress": s.readApplyProgress()})
 	case "/api/restore":
 		var req struct {
 			Backup   string `json:"backup"`

@@ -34,6 +34,8 @@ jobs:
         run: |
           RELEASE_VERSION=$(python3 -c 'import pathlib,re; v=pathlib.Path("release-version.txt").read_text().strip(); assert re.fullmatch(r"\d{1,4}\.\d{1,4}\.\d{1,4}",v); print(v)')
           echo "tag=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          RELEASE_CHANNEL=$(python3 -c 'import pathlib; v=pathlib.Path("release-channel.txt").read_text().strip(); assert v in ("stable","preview"); print(v)')
+          echo "channel=$RELEASE_CHANNEL" >> "$GITHUB_OUTPUT"
       - name: Build compact arm64 package
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
@@ -45,10 +47,14 @@ jobs:
       - name: Sign release metadata
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          PANEL_RELEASE_CHANNEL: ${{ steps.version.outputs.channel }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         run: go run ./tools/releasekey -mode sign -version "${RELEASE_TAG#v}" -archive "dist/DARKLS-VPN-Panel-${RELEASE_TAG}.zip" -out dist
       - name: Publish release and tag exact tested commit
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ steps.version.outputs.channel }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: gh release create "$RELEASE_TAG" "dist/DARKLS-VPN-Panel-${RELEASE_TAG}.zip" dist/panel-release.json dist/panel-release.sig --target "$GITHUB_SHA" --title "DARKLS VPN Panel ${RELEASE_TAG}" --notes-file dist/release-notes.md --latest
+        run: |
+          if [ "$RELEASE_CHANNEL" = preview ]; then set -- --prerelease --latest=false; else set -- --latest; fi
+          gh release create "$RELEASE_TAG" "dist/DARKLS-VPN-Panel-${RELEASE_TAG}.zip" dist/panel-release.json dist/panel-release.sig --target "$GITHUB_SHA" --title "DARKLS VPN Panel ${RELEASE_TAG}" --notes-file dist/release-notes.md "$@"

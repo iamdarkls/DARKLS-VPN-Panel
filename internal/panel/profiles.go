@@ -246,7 +246,7 @@ func (s *Server) saveBackup(ctx context.Context, raw string) error {
 	}
 	return atomicWrite(s.profilePath("backup"), jsonBytes(out))
 }
-func (s *Server) switchProfile(ctx context.Context, name string) error {
+func (s *Server) switchProfile(ctx context.Context, name string, reason ...string) (err error) {
 	if name != "primary" && name != "backup" {
 		return errors.New("неверный профиль")
 	}
@@ -254,6 +254,12 @@ func (s *Server) switchProfile(ctx context.Context, name string) error {
 	if e := readJSON(s.profilePath(name), &out); e != nil {
 		return errors.New("профиль не настроен")
 	}
+	from := s.activeConnectionID()
+	why := "profile"
+	if len(reason) > 0 {
+		why = reason[0]
+	}
+	defer func() { s.recordSwitch(from, out, why, err) }()
 	if e := s.testOutbound(ctx, out); e != nil {
 		return errors.New("выбранный канал не прошёл проверку; рабочий канал сохранён")
 	}
@@ -308,6 +314,9 @@ func (s *Server) commitProfileSwitch(cfg map[string]any, original []byte, name s
 	if err = atomicWrite(filepath.Join(s.dir, "active-profile.json"), jsonBytes(map[string]any{"name": name, "at": time.Now().Unix()})); err != nil {
 		return err
 	}
+	if err = atomicWrite(filepath.Join(s.dir, "previous-connection.json"), original); err != nil {
+		return err
+	}
 	if err = os.Remove(journal); err != nil {
 		return err
 	}
@@ -335,7 +344,7 @@ func (s *Server) failover() error {
 	_ = atomicWrite(s.runtimePath("last-failover"), []byte(fmt.Sprint(now)))
 	ctx, cancel := context.WithTimeout(s.networkContext(), 60*time.Second)
 	defer cancel()
-	return s.switchProfile(ctx, "backup")
+	return s.switchProfile(ctx, "backup", "automatic")
 }
 
 type profileJournal struct {

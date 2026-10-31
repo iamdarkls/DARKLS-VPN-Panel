@@ -1,7 +1,9 @@
+import { registerUnsaved } from '../stores/forms';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../api';
 import type { CoreResponse, CoreSettings } from '../types';
-import { cleanDraft, refreshStatus } from '../store';
+import { cleanDraft } from '../stores/draft';
+import { refreshStatus } from '../stores/vpn';
 import { notice, stamp, usePolling } from './ui';
 
 /** Xray update form and one in-flight job poll; keep unsaved settings while status refreshes.
@@ -127,6 +129,7 @@ export function useCoreUpdates() {
     if (result.error) notice(result.error, true);
     await load();
   }
+  registerUnsaved(() => changed.value);
   return {
     check,
     facts,

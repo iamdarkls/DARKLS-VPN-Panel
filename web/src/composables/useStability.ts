@@ -1,7 +1,9 @@
+import { registerUnsaved } from '../stores/forms';
 import { computed, reactive, ref } from 'vue';
 import { api } from '../api';
 import type { ServiceHistory, Preferences, Profile } from '../types';
-import { activity, loadActivity, loadState, refreshStatus, cleanDraft, status } from '../store';
+import { activity, loadActivity, refreshStatus, status } from '../stores/vpn';
+import { loadState, cleanDraft } from '../stores/draft';
 import { notice, stamp, duration, serviceLabel } from './ui';
 
 /** Monitor preferences and guarded recovery; offline recovery must leave VPN explicitly disabled.
@@ -129,6 +131,7 @@ export function useStability() {
       monitorPassword.value = '';
     }
   }
+  registerUnsaved(() => changed.value);
   return {
     summary,
     activity,

@@ -21,6 +21,8 @@ type Server struct {
 	operationContext context.Context
 	runner           Runner
 	mutation         sync.Mutex
+	applyMu          sync.Mutex
+	applyProgress    ApplyProgress
 	diagnosticMu     sync.Mutex
 	metricsMu        sync.Mutex
 	githubMu         sync.Mutex

@@ -60,6 +60,9 @@ export interface Job {
   finished?: number;
 }
 export interface ReleaseStatus {
+  channel?: 'stable' | 'preview';
+  installed_channel?: 'stable' | 'preview';
+  rollback_available?: boolean;
   current?: string;
   latest?: string;
   available?: boolean;
@@ -94,7 +97,17 @@ export interface ServerItem {
   active?: boolean;
   primary?: boolean;
 }
+export interface SwitchRecord {
+  at: number;
+  from: string;
+  to: string;
+  reason: string;
+  result: string;
+  verified: boolean;
+}
 export interface Connections {
+  history?: SwitchRecord[];
+  current_id?: string;
   items?: ServerItem[];
   current?: { protocol?: string; transport?: string; security?: string };
   rollback_available?: boolean;
@@ -191,4 +204,19 @@ export interface Diagnosis {
   routes_active: boolean;
   groups: Group[];
   addresses: { ip: string; via_vpn: boolean; reason?: string }[];
+}
+
+export interface ApplyProgress {
+  disabled?: boolean;
+  id: string;
+  phase: string;
+  started?: number;
+  finished?: number;
+  backup?: string;
+  saved?: boolean;
+  verified?: boolean;
+  rolled_back?: boolean;
+  recovery_pending?: boolean;
+  message?: string;
+  steps?: { name: string; state: string }[];
 }

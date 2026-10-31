@@ -74,6 +74,6 @@ jobs:
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_ota.py
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_recovery_mode.py
       - name: Three clients through Linux NAT and DNS
-        run: sudo python3 tests/integration/test_network.py
+        run: sudo python3 tests/integration/test_network.py --duration-seconds 120 --report /tmp/darkls-stability.json
       - name: Shell supervisor crash recovery
         run: python3 tests/integration/test_supervisor.py

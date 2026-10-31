@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { switchReasonLabel, switchResultLabel } from '../labels';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import Modal from '../components/Modal.vue';
@@ -120,6 +121,27 @@ defineExpose({ refresh });
         </div>
       </PanelBox>
     </div>
+    <PanelBox
+      v-show="tab === 'main'"
+      title="История переключений"
+      description="Последние 100 попыток за 30 дней. Идентификаторы каналов не содержат адресов и VPN-ключей."
+    >
+      <p>Текущий канал: {{ data.current_id || 'Не определён' }}</p>
+      <div
+        v-for="(entry, index) in [...(data.history || [])].reverse()"
+        :key="entry.at + ':' + index"
+        class="backup-row"
+      >
+        <div>
+          <strong>{{ stamp(entry.at) }} · {{ entry.from }} → {{ entry.to }}</strong>
+          <p>{{ switchReasonLabel(entry.reason) }} · {{ switchResultLabel(entry.result) }}</p>
+        </div>
+      </div>
+      <p v-if="!data.history?.length" class="muted">Переключений после обновления пока нет.</p>
+      <ActionButton :disabled="!data.rollback_available" :action="rollback">
+        Проверить и вернуть предыдущий канал
+      </ActionButton>
+    </PanelBox>
     <div
       id="servers-backup"
       v-show="tab === 'backup'"

@@ -1,0 +1,33 @@
+name: Extended network stability
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Duration in minutes (1–180); isolated NAT/DNS, no production router'
+        required: true
+        default: '60'
+permissions:
+  contents: read
+jobs:
+  soak:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 195
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Validate duration
+        env:
+          MINUTES: ${{ inputs.minutes }}
+        run: |
+          python3 -c 'import os; n=int(os.environ["MINUTES"]); assert 1 <= n <= 180; print("SOAK_SECONDS="+str(n*60))' >> "$GITHUB_ENV"
+      - name: Install namespace tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iptables iproute2
+      - name: Three clients, slow DNS and upstream resets
+        run: sudo python3 tests/integration/test_network.py --duration-seconds "$SOAK_SECONDS" --report /tmp/darkls-stability.json
+      - name: Report
+        if: always()
+        run: |
+          if [ -f /tmp/darkls-stability.json ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/darkls-stability.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

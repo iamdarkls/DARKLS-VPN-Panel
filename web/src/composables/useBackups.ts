@@ -1,7 +1,10 @@
+import { registerUnsaved } from '../stores/forms';
 import { ref } from 'vue';
 import { api } from '../api';
 import type { Storage, PanelState } from '../types';
-import { draft, dirty, busy, revision, loadState, refreshStatus } from '../store';
+import { draft, dirty, revision, loadState } from '../stores/draft';
+import { busy } from '../stores/sessionState';
+import { refreshStatus } from '../stores/vpn';
 import { bytes, stamp, notice, useAction } from './ui';
 
 /** Settings snapshots, import preview and bounded storage cleanup; refresh only the selected tab.
@@ -110,6 +113,7 @@ export function useBackups() {
     if (tab === 'history') await loadBackups();
     else if (tab === 'files') await loadStorage();
   }
+  registerUnsaved(() => cleanupChanged.value);
   return {
     backups,
     busy,

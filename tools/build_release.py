@@ -40,11 +40,15 @@ def parse_args(argv=None):
 
 def build_binary(root, version, arch):
     subprocess.run([sys.executable, str(root / 'tools/build_assets.py'), '--check'], check=True)
+    channel_file = root / 'release-channel.txt'
+    channel = channel_file.read_text().strip() if channel_file.exists() else 'stable'
+    if channel not in ('stable', 'preview'):
+        raise ValueError('Invalid release channel')
     binary = root / 'release' / 'darkls-panel'
     env = {**os.environ, 'CGO_ENABLED': '0', 'GOOS': 'linux', 'GOARCH': arch}
     subprocess.run([
         os.environ.get('GO_BIN', 'go'), 'build', '-buildvcs=false', '-trimpath',
-        '-gcflags=all=-l', '-ldflags=-s -w -buildid= -X darkls-panel/internal/panel.version=' + version,
+        '-gcflags=all=-l', '-ldflags=-s -w -buildid= -X darkls-panel/internal/panel.version=' + version + ' -X darkls-panel/internal/panel.panelReleaseChannel=' + channel,
         '-o', str(binary), './cmd/darkls-panel',
     ], cwd=root, env=env, check=True)
     return binary

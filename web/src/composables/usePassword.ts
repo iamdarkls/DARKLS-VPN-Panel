@@ -1,6 +1,7 @@
 import { reactive } from 'vue';
 import { api } from '../api';
-import { auth, dirty, logoutLocal } from '../store';
+import { auth, logoutLocal } from '../stores/session';
+import { dirty } from '../stores/draft';
 import { useAction } from './ui';
 
 /** Password-change flow; clear secret fields even when the request fails.

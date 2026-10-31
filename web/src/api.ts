@@ -25,7 +25,10 @@ export async function api<T>(
 ): Promise<T> {
   const epoch = generation,
     controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), path === 'status' ? 8000 : 180000);
+  const timer = setTimeout(
+    () => controller.abort(),
+    path === 'apply-status' ? 2500 : path === 'status' ? 8000 : 180000
+  );
   pending.add(controller);
   try {
     const headers: Record<string, string> = {};

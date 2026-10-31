@@ -5,6 +5,7 @@ import PanelBox from '../components/PanelBox.vue';
 
 import { useSites } from '../composables/useSites';
 const {
+  close,
   search,
   filter,
   categories,
@@ -144,7 +145,7 @@ defineExpose({ refresh: async () => {} });
       маршрутов перезапусти приложение. Доменные правила не гарантируют проксирование звонков по
       прямым IP.
     </p>
-    <Modal id="edit-dialog" :open="open" label="Настройка группы" @close="open = false">
+    <Modal id="edit-dialog" :open="open" label="Настройка группы" @close="close">
       <form id="edit-form" @submit.prevent="save">
         <div class="dialog-heading">
           <h2 id="edit-title">{{ editing < 0 ? 'Новая группа' : 'Домены сервиса' }}</h2>
@@ -153,7 +154,7 @@ defineExpose({ refresh: async () => {} });
             type="button"
             class="icon-button"
             aria-label="Закрыть"
-            @click="open = false"
+            @click="close"
           >
             ×
           </button>
