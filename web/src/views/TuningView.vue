@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CredentialScope from '../components/CredentialScope.vue';
+
 import PanelBox from '../components/PanelBox.vue';
 import DataTable from '../components/DataTable.vue';
 import Facts from '../components/Facts.vue';
@@ -87,10 +89,17 @@ defineExpose({ refresh: async () => {} });
           <option value="restore">Вернуть исходный XMUX этого канала</option>
         </select>
       </label>
-      <label>
-        Текущий пароль
-        <input v-model="password" type="password" autocomplete="current-password" />
-      </label>
+      <CredentialScope>
+        <label>
+          Текущий пароль
+          <input
+            v-model="password"
+            type="password"
+            name="password"
+            autocomplete="current-password"
+          />
+        </label>
+      </CredentialScope>
       <ActionButton :action="apply">Проверить и применить XHTTP</ActionButton>
     </PanelBox>
     <PanelBox

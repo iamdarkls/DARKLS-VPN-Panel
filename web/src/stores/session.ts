@@ -8,6 +8,7 @@ export function logoutLocal() {
   setSession('');
   auth.epoch++;
   auth.loggedIn = false;
+  auth.user = '';
   resetDraft();
   resetVPN();
   busy.value = false;
@@ -15,10 +16,11 @@ export function logoutLocal() {
 }
 onExpired(logoutLocal);
 export async function openSession() {
-  const d = await api<{ csrf: string; version: string }>('session');
+  const d = await api<{ csrf: string; version: string; user?: string }>('session');
   setSession(d.csrf);
   auth.epoch++;
   auth.version = d.version;
+  auth.user = d.user || '';
   auth.loggedIn = true;
   await loadState();
   await refreshStatus();

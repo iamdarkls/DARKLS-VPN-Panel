@@ -60,12 +60,19 @@ defineEmits<{ close: [] }>();
       </button>
       <button class="primary" :disabled="!lines.length" @click="download">Скачать</button>
     </div>
-    <input
-      v-model="search"
-      class="log-search"
-      placeholder="Поиск в журнале…"
-      aria-label="Поиск в журнале"
-    />
+    <form role="search" name="log-search" autocomplete="off" @submit.prevent>
+      <input
+        v-model="search"
+        type="search"
+        name="log-query"
+        autocomplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        class="log-search"
+        placeholder="Поиск в журнале…"
+        aria-label="Поиск в журнале"
+      />
+    </form>
     <div
       id="event-list"
       class="log-console"

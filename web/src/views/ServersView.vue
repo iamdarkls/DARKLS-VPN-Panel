@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import CredentialIdentity from '../components/CredentialIdentity.vue';
+import CredentialScope from '../components/CredentialScope.vue';
+
 import { switchReasonLabel, switchResultLabel } from '../labels';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
@@ -171,10 +174,17 @@ defineExpose({ refresh });
           autocomplete="off"
           spellcheck="false"
         ></textarea>
-        <label>
-          Текущий пароль панели
-          <input v-model="backupPassword" type="password" autocomplete="current-password" />
-        </label>
+        <CredentialScope>
+          <label>
+            Текущий пароль панели
+            <input
+              v-model="backupPassword"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </label>
+        </CredentialScope>
         <ActionButton :action="saveBackup">Проверить и сохранить резерв</ActionButton>
         <ActionButton :action="() => switchProfile('primary')">
           Переключиться на основной
@@ -190,6 +200,7 @@ defineExpose({ refresh });
       @close="closeAuth"
     >
       <form @submit.prevent="run(confirmAuth)">
+        <CredentialIdentity />
         <h2 id="server-auth-title">{{ auth.title }}</h2>
         <p class="muted">{{ auth.description }}</p>
         <label v-show="auth.withName">
@@ -206,6 +217,7 @@ defineExpose({ refresh });
           <input
             v-model="auth.password"
             type="password"
+            name="password"
             autocomplete="current-password"
             required
             :disabled="auth.pending"
@@ -299,10 +311,17 @@ defineExpose({ refresh });
             gRPC через TLS нужен HTTP/2 (h2).
           </p>
         </div>
-        <label>
-          Пароль для управления подключениями
-          <input v-model="password" type="password" autocomplete="current-password" />
-        </label>
+        <CredentialScope>
+          <label>
+            Пароль для управления подключениями
+            <input
+              v-model="password"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </label>
+        </CredentialScope>
         <p class="tiny muted">Реквизиты не сохраняются в браузере и очищаются при закрытии окна.</p>
         <div class="editor-actions">
           <ActionButton :disabled="pending" :action="testConnection">

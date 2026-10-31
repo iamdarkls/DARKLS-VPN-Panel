@@ -3,7 +3,8 @@ import { reactive, ref } from 'vue';
 export const auth = reactive({
   ready: false,
   loggedIn: false,
-  version: '2.2.0',
+  user: '',
+  version: '2.2.1',
   error: '',
   epoch: 0,
 });

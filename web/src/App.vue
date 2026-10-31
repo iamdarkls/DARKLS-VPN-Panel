@@ -264,12 +264,21 @@ onUnmounted(() => {
         </a>
       </div>
       <div class="router-label">ASUS TUF-BE6500</div>
-      <input
-        v-model="menuSearch"
-        class="menu-search"
-        placeholder="Найти раздел…"
-        aria-label="Поиск раздела"
-      />
+      <form role="search" name="panel-section-search" autocomplete="off" @submit.prevent>
+        <input
+          v-model="menuSearch"
+          type="search"
+          name="section-query"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          data-1p-ignore
+          data-lpignore="true"
+          class="menu-search"
+          placeholder="Найти раздел…"
+          aria-label="Поиск раздела"
+        />
+      </form>
       <nav aria-label="Разделы панели">
         <div v-for="[group, items] in filteredMenus" :key="group" class="nav-group">
           <p class="nav-heading">{{ group }}</p>

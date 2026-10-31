@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import CredentialIdentity from '../components/CredentialIdentity.vue';
+import CredentialScope from '../components/CredentialScope.vue';
+
 import { ref } from 'vue';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
@@ -58,15 +61,18 @@ defineExpose({ refresh });
               <option value="preview">Стабильный + тестовый</option>
             </select>
           </label>
-          <label>
-            Пароль для смены канала
-            <input
-              id="github-channel-password"
-              v-model="channelPassword"
-              type="password"
-              autocomplete="current-password"
-            />
-          </label>
+          <CredentialScope>
+            <label>
+              Пароль для смены канала
+              <input
+                id="github-channel-password"
+                v-model="channelPassword"
+                type="password"
+                name="password"
+                autocomplete="current-password"
+              />
+            </label>
+          </CredentialScope>
           <ActionButton :action="saveChannel">Сохранить канал</ActionButton>
         </div>
         <p class="tiny muted">
@@ -114,12 +120,14 @@ defineExpose({ refresh });
           id="github-install-form"
           @submit.prevent="run(install)"
         >
+          <CredentialIdentity />
           <label>
             Текущий пароль
             <input
               id="github-password"
               v-model="githubPassword"
               type="password"
+              name="password"
               autocomplete="current-password"
               required
             />
@@ -163,6 +171,7 @@ defineExpose({ refresh });
         description="Проверим состав, архитектуру и SHA-256 файлов. Пароль и списки сохранятся; при ошибке установщик попробует вернуть предыдущую версию."
       >
         <form id="update-form" @submit.prevent="run(upload)">
+          <CredentialIdentity />
           <label>
             Пакет обновления
             <input
@@ -179,6 +188,7 @@ defineExpose({ refresh });
               id="update-password"
               v-model="uploadPassword"
               type="password"
+              name="password"
               autocomplete="current-password"
               required
             />

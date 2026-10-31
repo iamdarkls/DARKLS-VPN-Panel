@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CredentialIdentity from '../components/CredentialIdentity.vue';
+
 import PanelBox from '../components/PanelBox.vue';
 
 import { usePassword } from '../composables/usePassword';
@@ -9,6 +11,7 @@ const { run, save, form, pending } = usePassword();
     <div class="settings-grid">
       <PanelBox title="Сменить пароль панели">
         <form id="password-form" @submit.prevent="run(save)">
+          <CredentialIdentity />
           <label>
             Текущий пароль
             <input

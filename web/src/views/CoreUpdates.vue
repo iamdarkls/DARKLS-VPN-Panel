@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CredentialScope from '../components/CredentialScope.vue';
+
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import ActionButton from '../components/ActionButton.vue';
@@ -62,10 +64,12 @@ defineExpose({ refresh: load });
       блокируется для автоматических повторов; за ночь — не больше одной попытки. Скачанные файлы
       находятся на USB и удаляются после операции.
     </p>
-    <label>
-      Текущий пароль панели
-      <input v-model="password" type="password" autocomplete="current-password" />
-    </label>
+    <CredentialScope>
+      <label>
+        Текущий пароль панели
+        <input v-model="password" type="password" name="password" autocomplete="current-password" />
+      </label>
+    </CredentialScope>
     <label class="quic-label">
       <input v-model="retry" type="checkbox" />
       Явно повторить установку ранее неудачной версии

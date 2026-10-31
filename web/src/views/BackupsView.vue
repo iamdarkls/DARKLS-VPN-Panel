@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CredentialScope from '../components/CredentialScope.vue';
+
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import ActionButton from '../components/ActionButton.vue';
@@ -105,10 +107,17 @@ defineExpose({ refresh });
         title="Копии и установочные архивы"
         description="Доступные известные файлы отдельно от работающей панели и Xray. Текущие программы, настройки и USB-автозапуск удалить здесь нельзя."
       >
-        <label>
-          Пароль для удаления выбранной копии
-          <input v-model="deletePassword" type="password" autocomplete="current-password" />
-        </label>
+        <CredentialScope>
+          <label>
+            Пароль для удаления выбранной копии
+            <input
+              v-model="deletePassword"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </label>
+        </CredentialScope>
         <ActionButton :action="loadStorage">Обновить список файлов</ActionButton>
         <div v-for="item in storage.items" :key="item.id" class="panel-box">
           <strong>{{ item.name }} · {{ bytes(item.bytes) }}</strong>
@@ -125,10 +134,17 @@ defineExpose({ refresh });
           <input v-model="enabled" type="checkbox" @change="cleanupChanged = true" />
           Удалять лишние файлы старше недели
         </label>
-        <label>
-          Текущий пароль панели
-          <input v-model="cleanupPassword" type="password" autocomplete="current-password" />
-        </label>
+        <CredentialScope>
+          <label>
+            Текущий пароль панели
+            <input
+              v-model="cleanupPassword"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </label>
+        </CredentialScope>
         <Facts
           :rows="[
             ['Порог', (storage.retention_days || 7) + ' дней'],

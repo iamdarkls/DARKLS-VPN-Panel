@@ -32,15 +32,20 @@ defineExpose({ refresh: async () => {} });
 <template>
   <section id="sites-view">
     <div class="toolbar">
-      <div class="search">
+      <form class="search" role="search" name="service-search" autocomplete="off" @submit.prevent>
         <span>⌕</span>
         <input
+          type="search"
+          name="service-query"
+          autocomplete="off"
+          data-1p-ignore
+          data-lpignore="true"
           id="search"
           v-model="search"
           placeholder="Найти сервис, домен или 18+"
           aria-label="Поиск сервиса или домена"
         />
-      </div>
+      </form>
       <select id="category-filter" v-model="filter" aria-label="Назначение группы">
         <option value="">Все назначения</option>
         <option v-for="(label, id) in categories" :key="id" :value="id">{{ label }}</option>

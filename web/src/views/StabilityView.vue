@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CredentialScope from '../components/CredentialScope.vue';
+
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import DataTable from '../components/DataTable.vue';
@@ -99,10 +101,17 @@ defineExpose({ refresh });
         title="Завершить незавершённую операцию"
         description="Подключи USB с резервной копией и повтори откат. Изменения доступны после успешного восстановления."
       >
-        <label>
-          Пароль для завершения восстановления
-          <input v-model="password" type="password" autocomplete="current-password" />
-        </label>
+        <CredentialScope>
+          <label>
+            Пароль для завершения восстановления
+            <input
+              v-model="password"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </label>
+        </CredentialScope>
         <ActionButton :disabled="recoveryBusy" :action="() => recoverPending()">
           Повторить восстановление
         </ActionButton>
@@ -132,10 +141,17 @@ defineExpose({ refresh });
         >
           {{ label }}
         </ActionButton>
-        <label>
-          Пароль для ручного перезапуска Xray
-          <input v-model="xrayPassword" type="password" autocomplete="current-password" />
-        </label>
+        <CredentialScope>
+          <label>
+            Пароль для ручного перезапуска Xray
+            <input
+              v-model="xrayPassword"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </label>
+        </CredentialScope>
         <ActionButton :action="() => repair('xray')">Перезапустить Xray</ActionButton>
       </PanelBox>
     </div>
@@ -166,10 +182,17 @@ defineExpose({ refresh });
             Автоматически переключаться на проверенный резерв
           </label>
         </div>
-        <label>
-          Текущий пароль
-          <input v-model="monitorPassword" type="password" autocomplete="current-password" />
-        </label>
+        <CredentialScope>
+          <label>
+            Текущий пароль
+            <input
+              v-model="monitorPassword"
+              type="password"
+              name="password"
+              autocomplete="current-password"
+            />
+          </label>
+        </CredentialScope>
         <ActionButton :action="save">Сохранить контроль связи</ActionButton>
       </PanelBox>
     </div>
