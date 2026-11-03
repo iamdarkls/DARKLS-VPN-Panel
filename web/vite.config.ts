@@ -19,7 +19,7 @@ export default defineConfig({
     target: 'es2022',
     cssCodeSplit: false,
     modulePreload: false,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
         entryFileNames: 'assets/panel.js',
         chunkFileNames: 'assets/[name].js',

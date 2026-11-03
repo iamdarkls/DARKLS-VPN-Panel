@@ -6,6 +6,11 @@
 - Vue 3, TypeScript и Vite закреплены точными версиями в `web/package-lock.json`.
 - Для браузерных сценариев — Playwright из `tools/browser/package-lock.json` и Chromium.
 
+TypeScript закреплён на 6.0.3: `vue-tsc` 3.3.14 использует JavaScript API
+компилятора, недоступный в TypeScript 7.0.2 (`typescript/lib/tsc`). Переход на
+TypeScript 7 требует совместимой версии Vue language tools; проверка типов
+остаётся обязательной частью сборки. Vite 8 использует `build.rolldownOptions`.
+
 Node.js нужен для разработки и сборки. Роутер запускает один Go-бинарник со встроенными сжатыми ресурсами; Vue выполняется в браузере. Внешних Go-модулей, CDN, удалённых шрифтов и серверного Node.js нет.
 
 ## Собрать интерфейс
