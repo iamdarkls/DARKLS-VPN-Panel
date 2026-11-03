@@ -37,7 +37,13 @@ defineExpose({ refresh: loadDevices });
         <select id="service-probe-select" v-model="service" aria-label="Сервис">
           <option v-for="[id, name] in services" :key="id" :value="id">{{ name }}</option>
         </select>
-        <ActionButton kind="primary" :action="probeService">Проверить HTTPS</ActionButton>
+        <ActionButton
+          kind="primary"
+          :action="probeService"
+          success="Проверка сервиса завершена. Результат показан в разделе."
+        >
+          Проверить HTTPS
+        </ActionButton>
       </form>
       <Facts
         v-if="serviceResult"
@@ -51,7 +57,13 @@ defineExpose({ refresh: loadDevices });
       />
     </PanelBox>
     <PanelBox title="Соединение через VPN">
-      <ActionButton id="probe-now" :action="probeTunnel">Проверить сейчас</ActionButton>
+      <ActionButton
+        id="probe-now"
+        :action="probeTunnel"
+        success="Проверка VPN завершена. Состояние обновлено."
+      >
+        Проверить сейчас
+      </ActionButton>
       <Facts id="probe-details" :rows="probeFacts" />
     </PanelBox>
     <PanelBox
@@ -72,7 +84,13 @@ defineExpose({ refresh: loadDevices });
           aria-label="Домен для проверки"
           required
         />
-        <ActionButton kind="primary" :action="diagnose">Проверить сайт</ActionButton>
+        <ActionButton
+          kind="primary"
+          :action="diagnose"
+          success="Проверка маршрута завершена. Результат показан в разделе."
+        >
+          Проверить сайт
+        </ActionButton>
       </form>
       <div id="diagnose-result" class="result-box">
         <template v-if="diagnosis">
@@ -111,7 +129,12 @@ defineExpose({ refresh: loadDevices });
       title="Что именно не отвечает"
       description="Прямой HTTPS, TCP VPN-сервера, DNS, правила и общий туннель проверяются отдельно. Проверка ограничена 45 секундами."
     >
-      <ActionButton :action="checkConnectivity">Проверить связь</ActionButton>
+      <ActionButton
+        :action="checkConnectivity"
+        success="Проверка связи завершена. Результаты показаны в разделе."
+      >
+        Проверить связь
+      </ActionButton>
       <Facts :rows="rows" />
       <p v-for="(value, key) in connectivity?.errors" :key="key" class="tiny muted">
         {{ key }}: {{ value }}
@@ -132,7 +155,12 @@ defineExpose({ refresh: loadDevices });
           <option v-for="[id, name] in services" :key="id" :value="id">{{ name }}</option>
         </select>
       </label>
-      <ActionButton :action="checkDependencies">Проверить зависимости</ActionButton>
+      <ActionButton
+        :action="checkDependencies"
+        success="Проверка зависимостей завершена. Результаты показаны в разделе."
+      >
+        Проверить зависимости
+      </ActionButton>
       <template v-if="dependencies">
         <DataTable
           :rows="dependencyRows"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSearchGuard } from '../directives/searchGuard';
 import Modal from '../components/Modal.vue';
 import ActionButton from '../components/ActionButton.vue';
 import PanelBox from '../components/PanelBox.vue';
@@ -36,6 +37,7 @@ defineExpose({ refresh: async () => {} });
         <span>⌕</span>
         <input
           type="search"
+          v-search-guard
           name="service-query"
           autocomplete="off"
           data-1p-ignore

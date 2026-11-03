@@ -1,6 +1,6 @@
 import { computed, ref, onMounted } from 'vue';
 import { api } from '../api';
-import { stamp, useAction, usePolling } from './ui';
+import { notice, stamp, useAction, usePolling } from './ui';
 
 interface Logs {
   events: { at: number; message: string }[];
@@ -35,6 +35,10 @@ export function useLogsDialog() {
         request = undefined;
       }));
   }
+  async function refreshManually() {
+    await refresh();
+    notice('Журнал обновлён.');
+  }
   function severity(line: string) {
     if (/error|failed|failure|timeout|ошиб|отказ|не отвеч|сбой/i.test(line)) return 'error';
     if (/warn|предупреж/i.test(line)) return 'warning';
@@ -64,6 +68,7 @@ export function useLogsDialog() {
     link.href = url;
     link.download = 'darkls-' + source.value + '.log';
     link.click();
+    notice('Файл журнала подготовлен и передан браузеру.');
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   onMounted(() => {
@@ -73,6 +78,7 @@ export function useLogsDialog() {
     if (auto.value) await refresh();
   }, 5000);
   return {
+    refreshManually,
     source,
     sources,
     limit,

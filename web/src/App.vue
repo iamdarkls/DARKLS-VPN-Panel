@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSearchGuard } from './directives/searchGuard';
 import { applyPhaseLabel, applyStepLabel, applyStateLabel } from './labels';
 import { applyProgress, dismissApplyProgress } from './stores/draft';
 import { hasUnsavedForms } from './stores/forms';
@@ -268,6 +269,7 @@ onUnmounted(() => {
         <input
           v-model="menuSearch"
           type="search"
+          v-search-guard
           name="section-query"
           autocomplete="off"
           autocapitalize="none"

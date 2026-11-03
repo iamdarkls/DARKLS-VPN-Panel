@@ -38,6 +38,22 @@ export function useCoreUpdates() {
       });
     return request;
   }
+  function notifyStatus() {
+    const s = data.value.status;
+    if (s.error) notice(s.error, true);
+    else if (s.available) notice('Доступна новая версия Xray: ' + s.latest + '.');
+    else if (!s.checked_at || !s.latest)
+      notice('Сведения Xray обновлены. Выполни проверку обновлений для запроса новых выпусков.');
+    else if (s.latest !== s.current)
+      notice(
+        'Сведения Xray обновлены. Источник предлагает более старую версию; понижение запрещено.'
+      );
+    else notice('Новых версий Xray не найдено. Установлена ' + s.current + '.');
+  }
+  async function refreshManually() {
+    await load();
+    notifyStatus();
+  }
   const facts = computed(() => {
     const { status: s, settings: p } = data.value;
     return [
@@ -103,6 +119,7 @@ export function useCoreUpdates() {
     try {
       await api('xray-install', 'POST', { password: password.value, version, retry: retry.value });
       await load();
+      notice('Обновление Xray запущено. Дождись завершения операции.');
     } finally {
       password.value = '';
     }
@@ -114,6 +131,7 @@ export function useCoreUpdates() {
     try {
       await api('xray-rollback', 'POST', { password: password.value });
       await load();
+      notice('Восстановление предыдущего Xray запущено.');
     } finally {
       password.value = '';
     }
@@ -121,16 +139,22 @@ export function useCoreUpdates() {
   usePolling(async () => {
     if (working.value) {
       await load();
-      if (!working.value) await refreshStatus();
+      if (!working.value) {
+        const job = data.value.job;
+        notice(job.message || 'Операция Xray завершена.', job.phase !== 'succeeded');
+        await refreshStatus();
+      }
     }
   }, 2500);
   async function check() {
     const result = await api<{ error?: string }>('xray-check', 'POST', {});
-    if (result.error) notice(result.error, true);
+    if (result.error) throw new Error(result.error);
     await load();
+    notifyStatus();
   }
   registerUnsaved(() => changed.value);
   return {
+    refreshManually,
     check,
     facts,
     load,

@@ -67,7 +67,12 @@ defineExpose({ refresh: async () => {} });
       title="Сравнить параметры XHTTP"
       description="Текущие параметры, 2 и 4 соединения проверяются последовательно отдельным Xray. До 3 МиБ загрузок плюс HTTPS; нужен запас 96 МиБ RAM. Рабочий канал не меняется. Короткий тест не подтверждает длительную стабильность."
     >
-      <ActionButton :action="compare">Сравнить три варианта</ActionButton>
+      <ActionButton
+        :action="compare"
+        success="Сравнение XHTTP завершено. Результаты показаны ниже."
+      >
+        Сравнить три варианта
+      </ActionButton>
       <template v-if="benchmark">
         <DataTable
           :rows="rows"
@@ -113,7 +118,12 @@ defineExpose({ refresh: async () => {} });
           <option value="vpn">Через VPN</option>
         </select>
       </label>
-      <ActionButton :action="measureLoad">Измерить задержку под нагрузкой</ActionButton>
+      <ActionButton
+        :action="measureLoad"
+        success="Измерение под нагрузкой завершено. Результаты показаны ниже."
+      >
+        Измерить задержку под нагрузкой
+      </ActionButton>
       <template v-if="load">
         <Facts
           :rows="[

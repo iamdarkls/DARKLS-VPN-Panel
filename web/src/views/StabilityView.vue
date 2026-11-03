@@ -52,7 +52,9 @@ defineExpose({ refresh });
         title="История состояния сервисов"
         description="Ошибка DNS, тайм-аут, ответ сайта и Cloudflare показаны отдельно."
       >
-        <ActionButton :action="loadHistory">Обновить историю</ActionButton>
+        <ActionButton :action="loadHistory" success="История обновлена.">
+          Обновить историю
+        </ActionButton>
         <DataTable
           :rows="rows"
           :columns="[

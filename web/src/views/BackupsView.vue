@@ -118,7 +118,9 @@ defineExpose({ refresh });
             />
           </label>
         </CredentialScope>
-        <ActionButton :action="loadStorage">Обновить список файлов</ActionButton>
+        <ActionButton :action="loadStorage" success="Список файлов обновлён.">
+          Обновить список файлов
+        </ActionButton>
         <div v-for="item in storage.items" :key="item.id" class="panel-box">
           <strong>{{ item.name }} · {{ bytes(item.bytes) }}</strong>
           <p class="tiny muted">{{ item.consequence }}</p>

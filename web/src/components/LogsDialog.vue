@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { vSearchGuard } from '../directives/searchGuard';
 import Modal from './Modal.vue';
 
 import { useLogsDialog } from '../composables/useLogsDialog';
@@ -10,7 +11,7 @@ const {
   auto,
   pending,
   run,
-  refresh,
+  refreshManually,
   lines,
   download,
   search,
@@ -55,7 +56,7 @@ defineEmits<{ close: [] }>();
         <input v-model="auto" type="checkbox" />
         Автообновление
       </label>
-      <button id="refresh-logs" class="secondary" :disabled="pending" @click="run(refresh)">
+      <button id="refresh-logs" class="secondary" :disabled="pending" @click="run(refreshManually)">
         Обновить
       </button>
       <button class="primary" :disabled="!lines.length" @click="download">Скачать</button>
@@ -64,6 +65,7 @@ defineEmits<{ close: [] }>();
       <input
         v-model="search"
         type="search"
+        v-search-guard
         name="log-query"
         autocomplete="off"
         data-1p-ignore
