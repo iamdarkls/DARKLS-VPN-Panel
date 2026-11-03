@@ -19,14 +19,23 @@ const assert=require('node:assert/strict');
  for(const field of snapshot.searches){assert.ok(field.name);assert.equal(field.autocomplete,'off');assert.equal(field.role,'search');assert.equal(field.passwords,0);}
  assert.ok(snapshot.passwords.length>=10);
  for(const field of snapshot.passwords){assert.ok(field.name);assert.equal(field.user,'actual-session-user');assert.ok(['current-password','new-password'].includes(field.autocomplete));}
+ assert.equal(await nav.evaluate(n=>n.readOnly),true);
+ await nav.evaluate(n=>{n.value='actual-session-user';n.dispatchEvent(new Event('input',{bubbles:true}));});
+ assert.equal(await nav.inputValue(),'');assert.ok(await page.locator('.nav').count()>5);
+ await nav.click();assert.equal(await nav.evaluate(n=>n.readOnly),false);
  let posts=0;page.on('request',r=>{if(r.method()==='POST')posts++;});
  await nav.fill('Обновления');await nav.press('Enter');assert.equal(await page.locator('.nav').count(),1);assert.equal(posts,0);await nav.fill('');
  await page.locator('[data-view=updates]').click();await page.locator('#github-channel-password').fill('confirmation-secret');
  assert.equal(await nav.inputValue(),'');assert.ok(await page.locator('.nav').count()>5);
  assert.equal(await page.locator('#github-channel-password').evaluate(n=>n.form.querySelector('input[autocomplete=username]').value),'actual-session-user');
- await page.locator('[data-view=sites]').click();await page.locator('#search').fill('YouTube');await page.locator('#search').press('Enter');assert.equal(posts,0);await page.locator('#search').fill('');
+ await page.locator('[data-view=sites]').click();await page.locator('#search').click();await page.locator('#search').fill('YouTube');await page.locator('#search').press('Enter');assert.equal(posts,0);await page.locator('#search').fill('');
  await page.locator('#open-logs').click();const logs=page.getByRole('dialog',{name:'Журналы',exact:true});await logs.waitFor();
  assert.equal(await page.getByLabel('Поиск в журнале',{exact:true}).evaluate(n=>n.form.getAttribute('role')),'search');await page.keyboard.press('Escape');
+ await nav.focus();await nav.press('Y');assert.equal(await nav.inputValue(),'Y');await nav.fill('');
+ await page.locator('[data-view=updates]').click();
+ assert.equal(await nav.evaluate(n=>n.readOnly),true);
+ await nav.evaluate(n=>{n.value='actual-session-user';n.dispatchEvent(new Event('input',{bubbles:true}));});
+ assert.equal(await nav.inputValue(),'');
  await page.locator('#logout').click();await page.locator('#login-form').waitFor();assert.equal(await page.locator('#app input[autocomplete=username]').count(),0);
  assert.equal(await page.evaluate(()=>Object.values(localStorage).some(v=>v.includes('confirmation-secret')||v.includes('actual-session-user'))),false);
  assert.deepEqual(errors,[]);await browser.close();

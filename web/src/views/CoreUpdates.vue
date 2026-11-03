@@ -7,6 +7,7 @@ import ActionButton from '../components/ActionButton.vue';
 
 import { useCoreUpdates } from '../composables/useCoreUpdates';
 const {
+  refreshManually,
   check,
   facts,
   load,
@@ -31,7 +32,7 @@ defineExpose({ refresh: load });
     description="Официальные стабильные выпуски и пререлизы XTLS/Xray-core для Linux ARM64. Автоустановка изначально выключена. При замене ядра VPN-соединения кратко переподключатся."
   >
     <Facts :rows="facts" />
-    <ActionButton :action="load">Обновить сведения Xray</ActionButton>
+    <ActionButton :action="refreshManually">Обновить сведения Xray</ActionButton>
     <pre class="log-box">{{ data.status.notes || '' }}</pre>
     <p class="tiny muted" role="status">
       {{

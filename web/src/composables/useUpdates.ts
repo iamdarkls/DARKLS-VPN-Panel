@@ -114,6 +114,10 @@ export function useUpdates(core: Ref<{ refresh: () => Promise<void> } | undefine
   }
   async function check() {
     github.value = await api<ReleaseStatus>('github-check', 'POST', {});
+    const s = github.value;
+    if (s.error) notice(s.error, true);
+    else if (s.available) notice('Доступна новая версия панели: ' + s.latest + '.');
+    else notice('Новых версий панели не найдено.');
   }
   registerUnsaved(() => channelChanged.value);
   return {

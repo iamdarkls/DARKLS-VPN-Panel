@@ -20,7 +20,9 @@ defineExpose({ refresh: loadDevices });
           <option value="exclude">Все, кроме выбранных</option>
         </select>
       </label>
-      <ActionButton id="refresh-devices" :action="loadDevices">Обновить список</ActionButton>
+      <ActionButton id="refresh-devices" :action="loadDevices" success="Список устройств обновлён.">
+        Обновить список
+      </ActionButton>
       <p id="device-summary" class="tiny muted">
         {{
           draft?.policy.mode === 'all'
