@@ -154,7 +154,7 @@ func (s *Server) handler() http.Handler {
 				fail(w, 500, e)
 				return
 			}
-			respond(w, 200, map[string]any{"state": st, "revision": s.revision(), "catalog_notes": catalogNotes})
+			respond(w, 200, map[string]any{"state": st, "revision": s.revision(), "catalog_notes": catalogNotes, "catalog_updates": catalogUpdates(st)})
 		case "/api/status":
 			if r.Method != "GET" {
 				w.WriteHeader(405)

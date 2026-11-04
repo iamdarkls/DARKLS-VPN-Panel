@@ -20,7 +20,15 @@ export interface Group {
   quic_until?: number;
   quic_previous?: boolean;
 }
+export interface CatalogUpdate {
+  id: string;
+  digest: string;
+  group: Group;
+  missing: string[];
+  new: boolean;
+}
 export interface PanelState {
+  catalog_choices?: Record<string, string>;
   version: number;
   groups: Group[];
   policy: { mode: 'all' | 'include' | 'exclude'; devices: DeviceRef[] };

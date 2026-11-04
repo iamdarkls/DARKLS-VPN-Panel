@@ -135,10 +135,6 @@ for name in reload-dns.sh devices-sync.sh; do mv "$PANEL/$name.new" "$PANEL/$nam
 mv "$BASE/watch.sh.new" "$BASE/watch.sh"
 mv "$BASE/vpn.sh.new" "$BASE/vpn.sh"
 chmod 700 "$BASE/watch.sh" "$BASE/vpn.sh"
-"$PANEL/darkls-panel" --update-catalog
-"$PANEL/darkls-panel" --repair-instagram
-"$PANEL/darkls-panel" --enable-x-grok
-"$PANEL/darkls-panel" --upgrade-service-dependencies
 "$PANEL/darkls-panel" --sync-devices --force-devices
 "$PANEL/darkls-panel" --upgrade-policy
 if [ "$LOG_RESTART" -eq 1 ] && [ ! -f "$BASE/autostart.disabled" ]; then

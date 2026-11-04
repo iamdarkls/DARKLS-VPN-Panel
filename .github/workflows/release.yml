@@ -11,24 +11,13 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.27.3'
           cache: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: |
-            web/package-lock.json
-            tools/browser/package-lock.json
-      - name: Install frontend dependencies
-        timeout-minutes: 5
-        run: sh tools/ci_retry.sh npm ci --prefix web --no-audit --no-fund
-      - name: Typecheck and build Vue interface
-        run: npm run --prefix web build
       - name: Validate release version
         id: version
         run: |
@@ -36,10 +25,12 @@ jobs:
           echo "tag=v$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
           RELEASE_CHANNEL=$(python3 -c 'import pathlib; v=pathlib.Path("release-channel.txt").read_text().strip(); assert v in ("stable","preview"); print(v)')
           echo "channel=$RELEASE_CHANNEL" >> "$GITHUB_OUTPUT"
-      - name: Build compact arm64 package
+      - name: Download exact tested package from this workflow run
         env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: python3 tools/build_release.py --version "${RELEASE_TAG#v}"
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "$GITHUB_RUN_ID" --name "tested-panel-$GITHUB_SHA" --dir dist
+      - name: Verify tested commit, tree, run, channel and archive checksum
+        run: python3 tools/tested_package.py verify
       - name: Prepare release changelog
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}

@@ -1,13 +1,14 @@
 import { computed, ref } from 'vue';
 import { api, sessionGeneration } from '../api';
-import type { PanelState, Preview, ApplyProgress } from '../types';
+import type { CatalogUpdate, PanelState, Preview, ApplyProgress } from '../types';
 import { busy } from './sessionState';
 import { refreshStatus } from './vpn';
 import { clone, notice } from '../composables/ui';
 export const draft = ref<PanelState>(),
   original = ref<PanelState>(),
   revision = ref(''),
-  catalogNotes = ref<Record<string, string>>({});
+  catalogNotes = ref<Record<string, string>>({}),
+  catalogUpdates = ref<CatalogUpdate[]>([]);
 export const dirty = computed(
   () => !!draft.value && JSON.stringify(draft.value) !== JSON.stringify(original.value)
 );
@@ -18,12 +19,14 @@ export async function loadState() {
     state: PanelState;
     revision: string;
     catalog_notes?: Record<string, string>;
+    catalog_updates?: CatalogUpdate[];
   }>('state');
   d.state.policy ||= { mode: 'all', devices: [] };
   draft.value = d.state;
   original.value = clone(d.state);
   revision.value = d.revision;
   catalogNotes.value = d.catalog_notes || {};
+  catalogUpdates.value = d.catalog_updates || [];
 }
 export function cleanDraft() {
   if (dirty.value) throw new Error('Сначала примени или отмени изменения списков.');
@@ -140,6 +143,7 @@ export function resetDraft() {
   original.value = undefined;
   revision.value = '';
   catalogNotes.value = {};
+  catalogUpdates.value = [];
   preview.value = undefined;
   applyProgress.value = undefined;
 }

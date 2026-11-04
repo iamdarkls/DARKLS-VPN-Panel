@@ -40,8 +40,8 @@ n=$((n+1));echo "$n" > "'''+str(home/'attempts')+'''"
    assert subprocess.check_output([str(panel/'darkls-panel'),'--version'],text=True).strip()==new_version
    state=json.loads((panel/'state.json').read_text());assert state['groups'][0]['name']=='Мой YouTube' and not state['groups'][0]['enabled']
    assert 'DARKLS_DEVICE_POLICY_HOOK' in (root/'vpn.sh').read_text()
-   assert (panel/'x-grok-enabled-v1').exists()
-   assert (panel/'service-dependencies-20261104-v1').exists()
+   assert not (panel/'x-grok-enabled-v1').exists()
+   assert not (panel/'service-dependencies-20261104-v1').exists()
    assert not pkg.exists();print('Bootstrap success: PASS, manifest, hooks, user state, cleanup')
   else:
    assert p.returncode!=0,(p.stdout,p.stderr)

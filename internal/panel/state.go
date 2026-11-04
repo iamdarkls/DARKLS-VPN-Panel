@@ -31,9 +31,10 @@ type Group struct {
 }
 
 type State struct {
-	Version int          `json:"version"`
-	Groups  []Group      `json:"groups"`
-	Policy  DevicePolicy `json:"policy"`
+	CatalogChoices map[string]string `json:"catalog_choices,omitempty"`
+	Version        int               `json:"version"`
+	Groups         []Group           `json:"groups"`
+	Policy         DevicePolicy      `json:"policy"`
 }
 
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -82,6 +83,15 @@ func normalizeDomain(raw string) (string, error) {
 }
 
 func validate(st State) (State, error) {
+	if len(st.CatalogChoices) > 200 {
+		return st, errors.New("слишком много решений каталога")
+	}
+	for id, digest := range st.CatalogChoices {
+		if !idPattern.MatchString(id) || len(digest) != 64 || strings.Trim(digest, "0123456789abcdef") != "" {
+			return st, errors.New("неверное решение каталога")
+		}
+	}
+
 	if len(st.Groups) > 100 {
 		return st, errors.New("не более 100 групп")
 	}

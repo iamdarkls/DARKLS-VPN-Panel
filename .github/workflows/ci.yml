@@ -2,12 +2,10 @@ name: Test and release
 on:
   push:
     branches: [main]
-  pull_request:
 permissions:
   contents: read
 jobs:
   release-plan:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     outputs:
       publish: ${{ steps.diff.outputs.publish }}
@@ -23,11 +21,15 @@ jobs:
             echo 'publish=true' >> "$GITHUB_OUTPUT"
           fi
   test:
+    needs: release-plan
+    with:
+      build_release: ${{ needs.release-plan.outputs.publish == 'true' }}
     uses: ./.github/workflows/validate.yml
   release:
     needs: [test, release-plan]
     if: github.event_name == 'push' && needs.release-plan.outputs.publish == 'true'
     permissions:
       contents: write
+      actions: read
     uses: ./.github/workflows/release.yml
     secrets: inherit

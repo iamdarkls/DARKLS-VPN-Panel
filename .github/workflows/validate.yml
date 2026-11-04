@@ -1,6 +1,10 @@
 name: Full validation
 on:
   workflow_call:
+    inputs:
+      build_release:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -77,3 +81,19 @@ jobs:
         run: sudo python3 tests/integration/test_network.py --duration-seconds 120 --report /tmp/darkls-stability.json
       - name: Shell supervisor crash recovery
         run: python3 tests/integration/test_supervisor.py
+      - name: Build package from validated source
+        if: inputs.build_release
+        run: |
+          python3 tools/build_release.py
+          python3 tools/tested_package.py record
+      - name: Store exact tested package
+        if: inputs.build_release
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-panel-${{ github.sha }}
+          path: |
+            dist/DARKLS-VPN-Panel-*.zip
+            dist/tested-package.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true

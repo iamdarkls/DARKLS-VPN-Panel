@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { vSearchGuard } from '../directives/searchGuard';
+import CatalogUpdates from '../components/CatalogUpdates.vue';
 import Modal from '../components/Modal.vue';
 import ActionButton from '../components/ActionButton.vue';
 import PanelBox from '../components/PanelBox.vue';
@@ -32,6 +33,7 @@ defineExpose({ refresh: async () => {} });
 </script>
 <template>
   <section id="sites-view">
+    <CatalogUpdates />
     <div class="toolbar">
       <form class="search" role="search" name="service-search" autocomplete="off" @submit.prevent>
         <span>⌕</span>
