@@ -30,7 +30,9 @@ def main():
     archive = ROOT / 'dist' / ('DARKLS-VPN-Panel-v' + version + '.zip')
     path = ROOT / 'dist' / 'tested-package.json'
     if mode == 'record':
-        subprocess.run(['git', 'diff', '--exit-code'], cwd=ROOT, check=True)
+        subprocess.run(['git', 'diff', '--exit-code', 'HEAD'], cwd=ROOT, check=True)
+        if subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard'], cwd=ROOT, text=True).strip():
+            raise ValueError('Untracked files in tested source tree')
         evidence = {**expected, 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}
         path.write_text(json.dumps(evidence, sort_keys=True) + '\n')
     elif mode == 'verify':

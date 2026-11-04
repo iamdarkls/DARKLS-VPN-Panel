@@ -14,10 +14,11 @@ jobs:
         with:
           fetch-depth: 0
       - id: diff
-        env:
-          BEFORE: ${{ github.event.before }}
         run: |
-          if git diff --name-only "$BEFORE" "$GITHUB_SHA" -- release-version.txt | grep -q .; then
+          RELEASE_VERSION=$(python3 -c 'import pathlib,re; v=pathlib.Path("release-version.txt").read_text().strip(); assert re.fullmatch(r"\d{1,4}\.\d{1,4}\.\d{1,4}",v); print(v)')
+          if git show-ref --verify --quiet "refs/tags/v$RELEASE_VERSION"; then
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          else
             echo 'publish=true' >> "$GITHUB_OUTPUT"
           fi
   test:

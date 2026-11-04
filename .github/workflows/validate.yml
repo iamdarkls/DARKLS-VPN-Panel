@@ -32,7 +32,10 @@ jobs:
       - name: Check frontend formatting
         run: npm run --prefix web format:check
       - name: Typecheck and build Vue interface
-        run: npm run --prefix web build
+        run: |
+          npm run --prefix web build
+          gofmt -w web/assets_generated.go
+          git diff --exit-code -- web/assets_generated.go
       - run: python3 tools/build_assets.py --check
       - run: go test -race ./...
       - run: go vet ./...
