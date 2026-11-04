@@ -21,3 +21,22 @@ Eporner добавлен отдельной группой с базовым д�
 Основные домены сверены с [category-porn](https://github.com/v2fly/domain-list-community/blob/master/data/category-porn). Для Tube8, YouJizz, BongaCams, Brazzers/Mofos и Reality Kings также использованы отдельные списки [tube8](https://github.com/v2fly/domain-list-community/blob/master/data/tube8), [youjizz](https://github.com/v2fly/domain-list-community/blob/master/data/youjizz), [bongacams](https://github.com/v2fly/domain-list-community/blob/master/data/bongacams), [brazzers](https://github.com/v2fly/domain-list-community/blob/master/data/brazzers), [realitykings](https://github.com/v2fly/domain-list-community/blob/master/data/realitykings). Где нет проверенного отдельного CDN, добавлен только базовый домен, без предположений о посторонних сетях.
 
 Наличие домена в списке не подтверждает его блокировку в России и не гарантирует доступность всех видео или трансляций. Все группы редактируются в панели. Содержимое самих сайтов при подготовке каталога не запрашивалось.
+
+## Обновление 04.11.2026
+
+Количество отдельных групп увеличено с 28 до 40. Добавлены Clips4Sale,
+Digital Playground, MyDirtyHobby, MetArt, Thumbzilla, Twistys, Babes, Men,
+Sean Cody, PornMD, ExtremeTube и KeezMovies. Новые группы выключены.
+
+Основные домены и CDN сверены с файлами `pornhub`, `xvideos`, `xnxx`,
+`xhamster`, `redtube`, `youporn`, `bongacams`, `brazzers`, `clips4sale`,
+`digitalplayground`, `mydirtyhobby`, `metart` и `mindgeek-porn` в
+[v2fly/domain-list-community](https://github.com/v2fly/domain-list-community/tree/3895d9a3a76de2c1598a10c5fefc38e3481117fa/data).
+Списки включают основные адреса, подтверждённые зеркала и CDN, но не обещают
+покрыть все сторонние плееры и динамические хосты. Неподтверждённые домены,
+рекламные сети и общие CDN не добавляются по предположению.
+
+Проверка основных страниц не подтверждает работу авторизации, платных функций
+или воспроизведения. Для части сайтов не удалось извлечь список ресурсов из
+публичного ответа, поэтому новые зависимости для них не заявляются как проверенные.
+Текущий выбор и пользовательские дополнения сохраняются при миграции.

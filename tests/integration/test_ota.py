@@ -35,6 +35,7 @@ esac
    if name=='install-update.sh':
     s=s.replace('\"$PANEL/darkls-panel\" --upgrade-policy','true # native migration covered by Go fault-injection tests')
     s=s.replace('"$PANEL/darkls-panel" --enable-x-grok','touch "$PANEL/x-grok-enabled-v1" # native activation covered by Go rollback tests')
+    s=s.replace('"$PANEL/darkls-panel" --upgrade-service-dependencies','touch "$PANEL/service-dependencies-20261104-v1" # native migration covered by Go transaction tests')
     a=s.index('ready() {');b=s.index('\nstart_and_check()',a)
     s=s[:a]+'''ready() {
 "'''+sys.executable+'''" -c 'import urllib.request,json;assert json.load(urllib.request.urlopen("http://127.0.0.1:18091/api/update-status",timeout=1))["version"]=="'''+new_version+'''"'

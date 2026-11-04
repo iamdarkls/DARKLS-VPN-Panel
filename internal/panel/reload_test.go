@@ -92,7 +92,7 @@ func TestAdultCatalogDefaultsOffAndKeepsUserChoice(t *testing.T) {
 			st.Groups[i].Enabled = true
 		}
 	}
-	if count != 28 {
+	if count != 40 {
 		t.Fatalf("adult groups: %d", count)
 	}
 	updated, added := addCatalogGroups(st)
