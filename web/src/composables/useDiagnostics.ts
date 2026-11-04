@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { Connectivity, Dependencies, Diagnosis, ServiceResult } from '../types';
 import { devices, loadDevices, probeFacts, refreshStatus } from '../stores/vpn';
 import { services } from './ui';
+import { draft } from '../stores/draft';
 
 /** Explicit diagnostic actions and their results; a service failure never restarts the tunnel.
  * Create once per mounted view; mutable form state must not become a module singleton. */
@@ -15,6 +16,14 @@ export function useDiagnostics() {
     connectivity = ref<Connectivity>(),
     dependencyService = ref('instagram'),
     dependencies = ref<Dependencies>();
+  const dependencyServices = computed(() =>
+    Array.from(
+      new Map<string, string>([
+        ...services,
+        ...(draft.value?.groups || []).map((g) => [g.id, g.name] as const),
+      ]).entries()
+    )
+  );
   const rows = computed(() => {
     const c = connectivity.value;
     if (!c) return [];
@@ -81,6 +90,7 @@ export function useDiagnostics() {
     });
   }
   return {
+    dependencyServices,
     checkDependencies,
     checkConnectivity,
     probeTunnel,

@@ -87,20 +87,47 @@ var dependencyHosts = map[string][]string{
 	"chatgpt":   {"chatgpt.com", "auth.openai.com", "oaistatic.com", "oaiusercontent.com"},
 	"youtube":   {"www.youtube.com", "i.ytimg.com", "youtubei.googleapis.com", "googlevideo.com"},
 	"discord":   {"discord.com", "gateway.discord.gg", "cdn.discordapp.com"},
-	"gemini":    {"gemini.google.com", "accounts.google.com", "generativelanguage.googleapis.com"},
+	"gemini":    {"gemini.google.com", "accounts.google.com", "www.googleapis.com", "geminiweb-pa.clients6.google.com", "generativelanguage.googleapis.com", "ssl.gstatic.com"},
 	"twitter":   {"x.com", "api.x.com", "twitter.com", "pbs.twimg.com", "abs.twimg.com", "video.twimg.com", "t.co"},
 	"grok":      {"grok.com", "accounts.x.ai", "api.x.ai", "x.com", "pbs.twimg.com", "challenges.cloudflare.com"},
 	"telegram":  {"telegram.org", "t.me", "web.telegram.org"},
 }
 
 func (s *Server) dependencies(ctx context.Context, id string) (map[string]any, error) {
-	hosts, ok := dependencyHosts[id]
-	if !ok {
-		return nil, errors.New("выберите известный сервис")
-	}
 	st, e := s.state()
 	if e != nil {
 		return nil, e
+	}
+	hosts := append([]string{}, dependencyHosts[id]...)
+	primary := serviceDomains[id]
+	if len(hosts) == 0 {
+		for _, g := range st.Groups {
+			if g.ID != id {
+				continue
+			}
+			hosts = append(hosts, g.Domains...)
+			if len(hosts) > 0 {
+				primary = hosts[0]
+			}
+			for _, specs := range [][]Group{presets, additionalPresets} {
+				for _, spec := range specs {
+					if spec.ID == id {
+						primary = spec.Domains[0]
+					}
+				}
+			}
+			if primary != "" {
+				hosts = uniqueCatalogDomains(append([]string{primary}, hosts...))
+			}
+			// Keep a diagnostic request bounded even for large custom groups.
+			if len(hosts) > 6 {
+				hosts = hosts[:6]
+			}
+			break
+		}
+	}
+	if len(hosts) == 0 || primary == "" {
+		return nil, errors.New("выберите существующий сервис с доменами")
 	}
 	rows := []map[string]any{}
 	for _, host := range hosts {
@@ -138,9 +165,9 @@ func (s *Server) dependencies(ctx context.Context, id string) (map[string]any, e
 		}
 		rows = append(rows, map[string]any{"https": https, "domain": host, "groups": matches, "addresses": addresses, "in_vpn_set": inSet, "dns": state, "configured": len(matches) > 0})
 	}
-	result := checkService(ctx, serviceDomains[id])
+	result := checkService(ctx, primary)
 	s.recordService(id, result)
-	return map[string]any{"service": id, "rows": rows, "https": result, "note": "Проверка с роутера. Корневой CDN-домен может не иметь A-записи — это не доказательство сбоя. Список зависимостей ограничен известными доменами; фактический запрос браузера может использовать другой хост."}, nil
+	return map[string]any{"service": id, "rows": rows, "https": result, "note": "Проверка с роутера. Корневой CDN-домен может не иметь A-записи — это не доказательство сбоя. Для дополнительных и пользовательских групп проверяются до 6 адресов. Список зависимостей ограничен известными доменами; фактический запрос браузера может использовать другой хост."}, nil
 }
 func previewChanges(old, next State) map[string]any {
 	before, after := map[string]bool{}, map[string]bool{}

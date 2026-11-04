@@ -9,7 +9,7 @@ const assert=require('node:assert/strict');
  await page.route('**/api/devices',r=>r.fulfill({json:{devices:[{mac:'02:11:22:33:44:55',name:'Компьютер',ip:'192.168.50.224',online:true},{mac:'02:11:22:33:44:66',name:'Телефон',ip:'192.168.50.202',online:true}]}}));
  await page.goto('http://127.0.0.1:18088');await page.locator('#login-form input[name=password]').fill('preview-password');await page.locator('#login-form button').click();await page.locator('.card').first().waitFor();
  assert.equal(await page.locator('.purpose-heading').count(),11);
- await page.locator('#category-filter').selectOption('adult');assert.equal(await page.locator('.card').count(),28);await page.locator('#category-filter').selectOption('');
+ await page.locator('#category-filter').selectOption('adult');assert.equal(await page.locator('.card').count(),40);await page.locator('#category-filter').selectOption('');
  await page.locator('#category-filter').selectOption('work');assert.equal(await page.locator('.card').count(),6);
  assert.match(await page.locator('.card').filter({has:page.getByRole('heading',{name:'Notion',exact:true})}).textContent(),/рабочие пространства/);
  await page.locator('#category-filter').selectOption('video');const tiktok=page.locator('.card').filter({has:page.getByRole('heading',{name:'TikTok',exact:true})});

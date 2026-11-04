@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable.vue';
 import ActionButton from '../components/ActionButton.vue';
 import { useDiagnostics } from '../composables/useDiagnostics';
 const {
+  dependencyServices,
   checkDependencies,
   checkConnectivity,
   probeTunnel,
@@ -152,7 +153,7 @@ defineExpose({ refresh: loadDevices });
       <label>
         Сервис
         <select v-model="dependencyService">
-          <option v-for="[id, name] in services" :key="id" :value="id">{{ name }}</option>
+          <option v-for="[id, name] in dependencyServices" :key="id" :value="id">{{ name }}</option>
         </select>
       </label>
       <ActionButton

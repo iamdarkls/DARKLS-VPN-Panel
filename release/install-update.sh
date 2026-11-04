@@ -22,7 +22,7 @@ chmod 700 "$ROLL"
 for name in vpn.sh watch.sh domains.txt dnsmasq-vpn.conf telegram-networks.txt; do cp -p "$BASE/$name" "$ROLL/$name"; done
 cp -p "$PANEL/state.json" "$ROLL/state.json"
 # One-shot migration markers belong to the update transaction too.
-for name in instagram-fbsbx-migrated x-grok-enabled-v1; do
+for name in instagram-fbsbx-migrated x-grok-enabled-v1 service-dependencies-20261104-v1; do
   rm -f "$ROLL/$name" "$ROLL/$name.absent"
   if [ -f "$PANEL/$name" ]; then cp -p "$PANEL/$name" "$ROLL/$name"; else touch "$ROLL/$name.absent"; fi
 done
@@ -84,7 +84,7 @@ rollback() {
     if [ -f "$ROLL/$name.absent" ]; then rm -f "$PANEL/$name"; else cp -p "$ROLL/$name" "$PANEL/$name"; fi
   done
   rm -f /tmp/darkls-device-digest
-  for name in instagram-fbsbx-migrated x-grok-enabled-v1; do
+  for name in instagram-fbsbx-migrated x-grok-enabled-v1 service-dependencies-20261104-v1; do
     if [ -f "$ROLL/$name.absent" ]; then rm -f "$PANEL/$name"; else cp -p "$ROLL/$name" "$PANEL/$name"; fi
   done
   if [ ! -f "$BASE/autostart.disabled" ]; then sh "$BASE/vpn.sh" start || true; fi
@@ -138,6 +138,7 @@ chmod 700 "$BASE/watch.sh" "$BASE/vpn.sh"
 "$PANEL/darkls-panel" --update-catalog
 "$PANEL/darkls-panel" --repair-instagram
 "$PANEL/darkls-panel" --enable-x-grok
+"$PANEL/darkls-panel" --upgrade-service-dependencies
 "$PANEL/darkls-panel" --sync-devices --force-devices
 "$PANEL/darkls-panel" --upgrade-policy
 if [ "$LOG_RESTART" -eq 1 ] && [ ! -f "$BASE/autostart.disabled" ]; then

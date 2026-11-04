@@ -80,6 +80,18 @@ var additionalPresets = []Group{
 	{ID: "adult-fuq", Name: "Fuq · 18+", Domains: strings.Fields("fuq.com")},
 	{ID: "adult-txxx", Name: "TXXX · 18+", Domains: strings.Fields("txxx.com")},
 	{ID: "adult-drtuber", Name: "DrTuber · 18+", Domains: strings.Fields("drtuber.com")},
+	{ID: "adult-clips4sale", Name: "Clips4Sale · 18+", Domains: strings.Fields("clips4sale.com c4slive.com videos4sale.com")},
+	{ID: "adult-digitalplayground", Name: "Digital Playground · 18+", Domains: strings.Fields("digitalplayground.com digitalplaygroundnetwork.com")},
+	{ID: "adult-mydirtyhobby", Name: "MyDirtyHobby · 18+", Domains: strings.Fields("mydirtyhobby.com mdhcdn.com")},
+	{ID: "adult-metart", Name: "MetArt · 18+", Domains: strings.Fields("metart.com metartnetwork.com metcams.com naiadsystems.com nsimg.net")},
+	{ID: "adult-thumbzilla", Name: "Thumbzilla · 18+", Domains: strings.Fields("thumbzilla.com")},
+	{ID: "adult-twistys", Name: "Twistys · 18+", Domains: strings.Fields("twistys.com")},
+	{ID: "adult-babes", Name: "Babes · 18+", Domains: strings.Fields("babes.com")},
+	{ID: "adult-men", Name: "Men · 18+", Domains: strings.Fields("men.com")},
+	{ID: "adult-seancody", Name: "Sean Cody · 18+", Domains: strings.Fields("seancody.com")},
+	{ID: "adult-pornmd", Name: "PornMD · 18+", Domains: strings.Fields("pornmd.com")},
+	{ID: "adult-extremetube", Name: "ExtremeTube · 18+", Domains: strings.Fields("extremetube.com")},
+	{ID: "adult-keezmovies", Name: "KeezMovies · 18+", Domains: strings.Fields("keezmovies.com")},
 }
 
 // Static notes are returned alongside state rather than inserted into user-owned

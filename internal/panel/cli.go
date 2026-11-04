@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var version = "2.2.2"
+var version = "2.2.3"
 
 func tuneRuntime() {
 	// The local control panel has little parallel work. Bound Go's memory target
@@ -39,6 +39,7 @@ func Run() {
 	upgradePolicy := flag.Bool("upgrade-policy", false, "мигрировать правила групп")
 	recoverParts := flag.Bool("recover-components", false, "точечное восстановление VPN")
 	checkParts := flag.Bool("check-components", false, "проверить компоненты соединения")
+	upgradeDependencies := flag.Bool("upgrade-service-dependencies", false, "однократно обновить зависимости групп сервисов")
 	enableXGrok := flag.Bool("enable-x-grok", false, "однократно включить X и Grok с зависимостями")
 	repairIG := flag.Bool("repair-instagram", false, "добавить недостающий домен проверки Instagram один раз")
 	updateCatalog := flag.Bool("update-catalog", false, "добавить отсутствующие группы выключенными")
@@ -159,6 +160,12 @@ func Run() {
 		}
 		defer release()
 		if e = s.recoverComponents(*reason); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
+	if *upgradeDependencies {
+		if e := s.upgradeServiceDependencies(); e != nil {
 			log.Fatal(e)
 		}
 		return
