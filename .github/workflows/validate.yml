@@ -43,28 +43,15 @@ jobs:
       - name: Validate router scripts
         run: |
           for script in router/*.sh release/*.sh; do sh -n "$script"; done
-      - name: Cache npm and Chromium
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/.cache/ms-playwright
-          key: browser-${{ runner.os }}-${{ hashFiles('tools/browser/package-lock.json') }}
       - name: Install pinned browser tools
         timeout-minutes: 5
         run: sh tools/ci_retry.sh npm ci --prefix tools/browser --ignore-scripts --no-audit --no-fund
-      - name: Install browser and network test dependencies
-        timeout-minutes: 8
-        run: |
-          sh tools/ci_retry.sh tools/browser/node_modules/.bin/playwright install-deps chromium
-          sh tools/ci_retry.sh sudo apt-get install -y --no-install-recommends iptables iproute2
-      - name: Install Chromium
-        timeout-minutes: 8
-        run: sh tools/ci_retry.sh tools/browser/node_modules/.bin/playwright install chromium
       - name: Browser scenarios
         env:
           NODE_PATH: ${{ github.workspace }}/tools/browser/node_modules
         run: |
-          export CHROME_PATH="$(node -p 'require("playwright").chromium.executablePath()')"
+          export CHROME_PATH="$(command -v google-chrome || command -v chromium)"
+          "$CHROME_PATH" --version
           python3 tests/integration/run_browser.py
       - name: Build native update pair
         run: |
@@ -80,6 +67,9 @@ jobs:
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_installer.py
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_ota.py
           sudo --preserve-env=DARKLS_BASELINE_BINARY,DARKLS_CURRENT_BINARY python3 tests/integration/test_recovery_mode.py
+      - name: Check network test tools
+        timeout-minutes: 3
+        run: sh tools/ci_network_tools.sh
       - name: Three clients through Linux NAT and DNS
         run: sudo python3 tests/integration/test_network.py --duration-seconds 120 --report /tmp/darkls-stability.json
       - name: Shell supervisor crash recovery

@@ -19,8 +19,9 @@ jobs:
           MINUTES: ${{ inputs.minutes }}
         run: |
           python3 -c 'import os; n=int(os.environ["MINUTES"]); assert 1 <= n <= 180; print("SOAK_SECONDS="+str(n*60))' >> "$GITHUB_ENV"
-      - name: Install namespace tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends iptables iproute2
+      - name: Check network test tools
+        timeout-minutes: 3
+        run: sh tools/ci_network_tools.sh
       - name: Three clients, slow DNS and upstream resets
         run: sudo python3 tests/integration/test_network.py --duration-seconds "$SOAK_SECONDS" --report /tmp/darkls-stability.json
       - name: Report
