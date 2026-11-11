@@ -3,6 +3,7 @@ import CredentialIdentity from '../components/CredentialIdentity.vue';
 import CredentialScope from '../components/CredentialScope.vue';
 
 import { switchReasonLabel, switchResultLabel } from '../labels';
+import SubscriptionSettings from '../components/SubscriptionSettings.vue';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import Modal from '../components/Modal.vue';
@@ -82,6 +83,7 @@ defineExpose({ refresh });
           Вернуть предыдущее подключение
         </ActionButton>
       </PanelBox>
+      <SubscriptionSettings :settings="data.subscription" :reload="() => refresh('main')" />
       <PanelBox
         title="Мои серверы"
         description="Сохрани сервер после проверки и подключайся отдельной кнопкой. Переименование и удаление копии не меняют работающий VPN."

@@ -28,6 +28,7 @@ type Server struct {
 	githubMu         sync.Mutex
 	coreMu           sync.Mutex
 	historyMu        sync.Mutex
+	subscriptionMu   sync.Mutex
 	lastCPU          cpuSample
 }
 

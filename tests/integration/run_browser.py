@@ -12,12 +12,13 @@ import urllib.request
 root = pathlib.Path(__file__).resolve().parents[2]
 go = os.environ.get('GO_BIN', 'go')
 node = os.environ.get('NODE_BIN', shutil.which('node') or 'node')
-scenarios = sys.argv[1:] or ['browser-features.cjs', 'browser-advanced.cjs', 'browser-core.cjs', 'browser-manage.cjs', 'browser-organization.cjs', 'browser-assets.cjs', 'browser-recovery.cjs', 'browser-vue.cjs', 'browser-design.cjs', 'browser-workspace.cjs', 'browser-autofill.cjs', 'browser-catalog.cjs']
+scenarios = sys.argv[1:] or ['browser-features.cjs', 'browser-advanced.cjs', 'browser-core.cjs', 'browser-manage.cjs', 'browser-organization.cjs', 'browser-assets.cjs', 'browser-recovery.cjs', 'browser-vue.cjs', 'browser-design.cjs', 'browser-workspace.cjs', 'browser-autofill.cjs', 'browser-catalog.cjs', 'browser-subscription.cjs']
 for scenario in scenarios:
     with tempfile.TemporaryFile(mode='w+') as log:
         proc = subprocess.Popen(
             [go, 'test', '-run', '^TestBrowserHarness$', '-v', './internal/panel'], cwd=root,
-            env={**os.environ, 'DARKLS_BROWSER_PREVIEW': '1'},
+            env={**os.environ, 'DARKLS_BROWSER_PREVIEW': '1',
+                 'DARKLS_BROWSER_SUBSCRIPTION': '1' if scenario == 'browser-subscription.cjs' else '0'},
             start_new_session=True, stdout=log, stderr=subprocess.STDOUT,
         )
         try:

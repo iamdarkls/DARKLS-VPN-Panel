@@ -114,6 +114,10 @@ func (s *Server) handler() http.Handler {
 			s.panelChannelAPI(w, r)
 			return
 		}
+		if r.URL.Path == "/api/subscription" {
+			s.subscriptionAPI(w, r)
+			return
+		}
 		if s.connectionAPI(w, r) {
 			return
 		}

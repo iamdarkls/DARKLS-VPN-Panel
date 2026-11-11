@@ -59,7 +59,7 @@ func (s *Server) recordSwitch(from string, out map[string]any, reason string, er
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
 	switch reason {
-	case "automatic", "profile", "connection-use", "connection-apply", "connection-rollback":
+	case "automatic", "profile", "connection-use", "connection-apply", "connection-rollback", "subscription":
 	default:
 		reason = "manual"
 	}

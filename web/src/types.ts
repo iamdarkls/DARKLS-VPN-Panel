@@ -113,7 +113,15 @@ export interface SwitchRecord {
   result: string;
   verified: boolean;
 }
+export interface SubscriptionStatus {
+  configured: boolean;
+  auto: boolean;
+  profile: string;
+  bound: boolean;
+  result: { checked_at: number; code: string; message?: string };
+}
 export interface Connections {
+  subscription?: SubscriptionStatus;
   history?: SwitchRecord[];
   current_id?: string;
   items?: ServerItem[];

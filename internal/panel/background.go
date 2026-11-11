@@ -33,6 +33,7 @@ func (s *Server) startBackground(ctx context.Context) {
 	go s.githubLoop(ctx)
 	go s.coreLoop(ctx)
 	go s.cleanupLoop(ctx)
+	go runPeriodic(ctx, time.Minute, time.Minute, func() { s.subscriptionTick(ctx) })
 	go runPeriodic(ctx, 10*time.Second, time.Minute, s.sampleResources)
 }
 

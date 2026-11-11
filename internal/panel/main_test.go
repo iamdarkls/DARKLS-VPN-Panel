@@ -240,6 +240,11 @@ func TestBrowserHarness(t *testing.T) {
 	st, _ = addCatalogGroups(st)
 	_ = atomicWrite(filepath.Join(s.dir, "state.json"), jsonBytes(st))
 	s.auth = Auth{User: "admin", Salt: "browser-test", Hash: passwordHash("preview-password", "browser-test")}
+	if os.Getenv("DARKLS_BROWSER_SUBSCRIPTION") == "1" {
+		if err := atomicWrite(filepath.Join(s.root, "config-vpn.json"), []byte(`{"outbounds":[{"tag":"vpn","protocol":"vless"}]}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Log("browser harness ready")
 	if e := http.ListenAndServe(s.host, s.handler()); e != nil {
 		t.Fatal(e)

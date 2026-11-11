@@ -27,6 +27,7 @@ const stepStates: Record<string, string> = {
 };
 const switchReasons: Record<string, string> = {
   automatic: 'Автопереключение',
+  subscription: 'Обновление подписки',
   profile: 'Выбор профиля',
   'connection-use': 'Подключение из списка',
   'connection-apply': 'Ручная настройка',

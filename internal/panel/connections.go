@@ -65,7 +65,7 @@ func (s *Server) connectionStatus() (map[string]any, error) {
 		rows = append(rows, row)
 	}
 	_, previousErr := os.Stat(filepath.Join(s.dir, "previous-connection.json"))
-	return map[string]any{"rollback_available": previousErr == nil, "items": rows, "current": connectionMeta(current), "limit": 20, "profile": s.profileStatus(), "history": s.switchHistory(), "current_id": s.activeConnectionID()}, nil
+	return map[string]any{"rollback_available": previousErr == nil, "items": rows, "current": connectionMeta(current), "limit": 20, "profile": s.profileStatus(), "history": s.switchHistory(), "current_id": s.activeConnectionID(), "subscription": s.subscriptionStatus()}, nil
 }
 func (s *Server) connectionOutbound(id string) (map[string]any, error) {
 	if id == "previous" {
