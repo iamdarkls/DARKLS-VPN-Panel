@@ -301,9 +301,9 @@ func extractCore(zipPath, dir string) (string, error) {
 
 // Caller hands over mutation + diagnostic locks. The shared process lock is
 // acquired by installCore only after download, so traffic stays live meanwhile.
-func (s *Server) runCoreJob(j CoreJob, retry bool) {
+func (s *Server) runCoreJob(j CoreJob, retry bool, releaseDiagnostic func()) {
 	defer s.mutation.Unlock()
-	defer s.diagnosticMu.Unlock()
+	defer releaseDiagnostic()
 	var err error
 	blocked := false
 	defer func() {
@@ -435,10 +435,10 @@ func pruneBlocked(m map[string]int64) {
 		delete(m, old)
 	}
 }
-func (s *Server) launchCoreJob(target string, rollback, retry bool) CoreJob {
+func (s *Server) launchCoreJob(target string, rollback, retry bool, releaseDiagnostic func()) CoreJob {
 	j := CoreJob{ID: token()[:16], Target: target, Rollback: rollback, Started: time.Now().Unix()}
 	s.coreProgress(&j, "queued", "Операция Xray запущена")
-	go s.runCoreJob(j, retry)
+	go s.runCoreJob(j, retry, releaseDiagnostic)
 	return j
 }
 func (s *Server) coreAPI(w http.ResponseWriter, r *http.Request) bool {
@@ -538,12 +538,17 @@ func (s *Server) coreAPI(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 	}
-	if !s.diagnosticMu.TryLock() {
-		fail(w, 409, errors.New("диагностика уже выполняется"))
+	label := "установка ядра Xray"
+	if rollback {
+		label = "откат ядра Xray"
+	}
+	releaseDiagnostic, err := s.diagnostics.manual(r.Context(), label)
+	if err != nil {
+		fail(w, 409, err)
 		return true
 	}
 	handoff = true
-	respond(w, 202, map[string]any{"job": s.launchCoreJob(req.Version, rollback, req.Retry)})
+	respond(w, 202, map[string]any{"job": s.launchCoreJob(req.Version, rollback, req.Retry, releaseDiagnostic)})
 	return true
 }
 
@@ -596,12 +601,13 @@ func (s *Server) tryAutoCore(p CoreSettings, st CoreStatus, now time.Time) {
 			s.mutation.Unlock()
 		}
 	}()
-	if !s.diagnosticMu.TryLock() {
+	releaseDiagnostic := s.diagnostics.tryExclusive("автоматическая установка ядра Xray")
+	if releaseDiagnostic == nil {
 		return
 	}
 	defer func() {
 		if !launched {
-			s.diagnosticMu.Unlock()
+			releaseDiagnostic()
 		}
 	}()
 	if _, e := coreBackupDir(); e != nil {
@@ -611,6 +617,6 @@ func (s *Server) tryAutoCore(p CoreSettings, st CoreStatus, now time.Time) {
 	if atomicWrite(s.corePath("xray-settings.json"), jsonBytes(p)) != nil {
 		return
 	}
-	s.launchCoreJob(st.Latest, false, false)
+	s.launchCoreJob(st.Latest, false, false, releaseDiagnostic)
 	launched = true
 }

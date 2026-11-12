@@ -401,11 +401,12 @@ func (s *Server) connectionAPI(w http.ResponseWriter, r *http.Request) bool {
 		respond(w, 200, map[string]any{"outbound": out})
 		return true
 	}
-	if !s.diagnosticMu.TryLock() {
-		fail(w, 409, errors.New("диагностика занята"))
+	releaseDiagnostic, err := s.diagnostics.manual(r.Context(), diagnosticLabel(r.URL.Path))
+	if err != nil {
+		fail(w, 409, err)
 		return true
 	}
-	defer s.diagnosticMu.Unlock()
+	defer releaseDiagnostic()
 	release, e := s.pause()
 	if e != nil {
 		fail(w, 409, e)

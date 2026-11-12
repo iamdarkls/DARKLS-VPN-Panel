@@ -64,7 +64,7 @@ func TestSubscriptionBindingStopsAfterManualChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := subscriptionConfig{URL: "https://example.com/secret", Bound: "different"}
-	if code, err := s.refreshSubscription(context.Background(), config); err == nil || code != "" {
+	if code, err := s.refreshSubscription(context.Background(), config, true); err == nil || code != "" {
 		t.Fatal("detached subscription should not be fetched or applied")
 	}
 	if err := atomicWrite(s.subscriptionPath(), jsonBytes(config)); err != nil {

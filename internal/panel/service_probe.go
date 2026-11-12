@@ -69,11 +69,12 @@ func checkService(ctx context.Context, domain string) ServiceResult {
 	return finish(classifyServiceResponse(domain, resp, e))
 }
 func (s *Server) serviceProbe(w http.ResponseWriter, r *http.Request) {
-	if !s.diagnosticMu.TryLock() {
-		fail(w, 409, errors.New("диагностика уже выполняется"))
+	releaseDiagnostic, err := s.diagnostics.manual(r.Context(), "проверка доступности сервиса")
+	if err != nil {
+		fail(w, 409, err)
 		return
 	}
-	defer s.diagnosticMu.Unlock()
+	defer releaseDiagnostic()
 	var req struct {
 		Service string `json:"service"`
 	}

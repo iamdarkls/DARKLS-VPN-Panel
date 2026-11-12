@@ -23,7 +23,7 @@ type Server struct {
 	mutation         sync.Mutex
 	applyMu          sync.Mutex
 	applyProgress    ApplyProgress
-	diagnosticMu     sync.Mutex
+	diagnostics      diagnosticSlot
 	metricsMu        sync.Mutex
 	githubMu         sync.Mutex
 	coreMu           sync.Mutex

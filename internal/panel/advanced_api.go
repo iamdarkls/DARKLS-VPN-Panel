@@ -23,11 +23,12 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 	if get {
 		switch r.URL.Path {
 		case "/api/report":
-			if !s.diagnosticMu.TryLock() {
-				fail(w, 409, errors.New("диагностика занята"))
+			releaseDiagnostic, err := s.diagnostics.manual(r.Context(), diagnosticLabel(r.URL.Path))
+			if err != nil {
+				fail(w, 409, err)
 				break
 			}
-			defer s.diagnosticMu.Unlock()
+			defer releaseDiagnostic()
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.Header().Set("Content-Disposition", `attachment; filename="darkls-diagnostic-report.json"`)
 			_, _ = w.Write(s.report())
@@ -72,11 +73,12 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	// Read-only network diagnostics share one slot; they cannot stack processes.
 	if r.URL.Path == "/api/connectivity" || r.URL.Path == "/api/dependencies" || r.URL.Path == "/api/xhttp-benchmark" || r.URL.Path == "/api/load-test" {
-		if !s.diagnosticMu.TryLock() {
-			fail(w, 409, errors.New("другая диагностика уже выполняется"))
+		releaseDiagnostic, err := s.diagnostics.manual(r.Context(), diagnosticLabel(r.URL.Path))
+		if err != nil {
+			fail(w, 409, err)
 			return true
 		}
-		defer s.diagnosticMu.Unlock()
+		defer releaseDiagnostic()
 		switch r.URL.Path {
 		case "/api/connectivity":
 			c := s.networkOperation(r.Context()).collectConnectivity(true)
@@ -250,6 +252,12 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 			e = errors.New("VPN выключен")
 			break
 		}
+		releaseDiagnostic, err := s.diagnostics.manual(r.Context(), diagnosticLabel(r.URL.Path))
+		if err != nil {
+			fail(w, 409, err)
+			return true
+		}
+		defer releaseDiagnostic()
 		switch req.Component {
 		case "auto":
 			e = s.networkOperation(r.Context()).recoverComponents("Ручная диагностика")
@@ -285,11 +293,12 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 		if e != nil {
 			break
 		}
-		if !s.diagnosticMu.TryLock() {
-			e = errors.New("диагностика занята")
-			break
+		releaseDiagnostic, err := s.diagnostics.manual(r.Context(), diagnosticLabel(r.URL.Path))
+		if err != nil {
+			fail(w, 409, err)
+			return true
 		}
-		defer s.diagnosticMu.Unlock()
+		defer releaseDiagnostic()
 		ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
 		defer cancel()
 		switch r.URL.Path {

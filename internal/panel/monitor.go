@@ -106,10 +106,11 @@ func (m *Monitor) tick(parent context.Context) {
 		return
 	}
 	s.mutation.Unlock()
-	if !s.diagnosticMu.TryLock() {
+	background, releaseDiagnostic := s.diagnostics.tryProbe(parent, "фоновая проверка туннеля и DNS")
+	if releaseDiagnostic == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
+	ctx, cancel := context.WithTimeout(background, 60*time.Second)
 	scoped := s.networkOperation(ctx)
 	routerVerified, httpsVerified := false, false
 	reason, structural := m.observe(ctx, now, scoped.quickHealth, func() error {
@@ -128,13 +129,14 @@ func (m *Monitor) tick(parent context.Context) {
 	if ctx.Err() == nil && routerVerified && httpsVerified && recordRecoveryConfirmation(nil) {
 		appendEvent("recovery_confirmed", "DNS, правила и HTTPS снова подтверждены автоконтролем")
 	}
+	interrupted := background.Err() != nil
 	cancel()
-	s.diagnosticMu.Unlock()
+	releaseDiagnostic()
 	cooldown := 180 * time.Second
 	if structural {
 		cooldown = 15 * time.Second
 	}
-	if reason == "" || !due(time.Now(), m.lastRecovery, cooldown) || parent.Err() != nil {
+	if interrupted || reason == "" || !due(time.Now(), m.lastRecovery, cooldown) || parent.Err() != nil {
 		return
 	}
 	m.recover(parent, reason)
@@ -153,8 +155,10 @@ func (m *Monitor) observe(ctx context.Context, now time.Time, quick func(context
 		structural = true
 	} else if quickErr == nil {
 		if due(now, m.lastDeep, time.Minute) {
-			m.lastDeep = now
 			err := router()
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				m.lastDeep = now
+			}
 			// An aggregate deadline is an incomplete check, not a proven DNS outage.
 			if ctx.Err() == nil && !errors.Is(err, errDiagnosticIncomplete) && !errors.Is(err, context.Canceled) {
 				m.dnsFailures = failureStreak(m.dnsFailures, err)
@@ -164,8 +168,10 @@ func (m *Monitor) observe(ctx context.Context, now time.Time, quick func(context
 			}
 		}
 		if now.Year() >= 2025 && due(now, m.lastProbe, 30*time.Second) && ctx.Err() == nil {
-			m.lastProbe = now
 			err := https()
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				m.lastProbe = now
+			}
 			if ctx.Err() == nil {
 				m.httpsFailures = failureStreak(m.httpsFailures, err)
 				if m.httpsFailures >= 2 {
@@ -183,10 +189,11 @@ func (m *Monitor) recover(parent context.Context, reason string) {
 		return
 	}
 	defer s.mutation.Unlock()
-	if !s.diagnosticMu.TryLock() {
+	releaseDiagnostic := s.diagnostics.tryExclusive("автоматическое восстановление VPN")
+	if releaseDiagnostic == nil {
 		return
 	}
-	defer s.diagnosticMu.Unlock()
+	defer releaseDiagnostic()
 	if updateBusy() || s.pendingRecovery() || s.disabled() || coreJobActive(s.coreJob()) {
 		return
 	}

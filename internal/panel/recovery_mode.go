@@ -47,11 +47,12 @@ func (s *Server) recoveryAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.mutation.Unlock()
-	if !s.diagnosticMu.TryLock() {
-		fail(w, 409, errors.New("диагностика выполняется; повторите восстановление после её завершения"))
+	releaseDiagnostic, err := s.diagnostics.manual(r.Context(), "восстановление конфигурации VPN")
+	if err != nil {
+		fail(w, 409, err)
 		return
 	}
-	defer s.diagnosticMu.Unlock()
+	defer releaseDiagnostic()
 	if req.Offline {
 		backup, err := s.recoverProfileOffline()
 		if err != nil {

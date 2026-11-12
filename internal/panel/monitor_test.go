@@ -142,3 +142,19 @@ func TestFailedRepairCannotReuseOldGreenHTTPS(t *testing.T) {
 		t.Fatal("verified repair not accepted")
 	}
 }
+
+func TestCanceledMonitorProbeDoesNotCountAsFailureOrDelayNextCheck(t *testing.T) {
+	now := time.Now()
+	m := Monitor{lastDeep: now, httpsFailures: 1}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reason, structural := m.observe(ctx, now, func(context.Context) error { return nil },
+		func() error { t.Fatal("deep check was not due"); return nil },
+		func() error {
+			cancel()
+			return errors.New("canceled HTTP request")
+		})
+	if reason != "" || structural || m.httpsFailures != 1 || !m.lastProbe.IsZero() {
+		t.Fatalf("canceled check affected recovery: reason=%q failures=%d lastProbe=%v", reason, m.httpsFailures, m.lastProbe)
+	}
+}

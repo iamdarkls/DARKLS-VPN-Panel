@@ -13,11 +13,12 @@ import (
 )
 
 func (s *Server) diagnose(w http.ResponseWriter, r *http.Request) {
-	if !s.diagnosticMu.TryLock() {
-		fail(w, 409, errors.New("диагностика уже выполняется"))
+	releaseDiagnostic, err := s.diagnostics.manual(r.Context(), "диагностика домена")
+	if err != nil {
+		fail(w, 409, err)
 		return
 	}
-	defer s.diagnosticMu.Unlock()
+	defer releaseDiagnostic()
 	var req struct {
 		Domain    string `json:"domain"`
 		DeviceMAC string `json:"device_mac"`
@@ -181,11 +182,12 @@ func (s *Server) extraAPI(w http.ResponseWriter, r *http.Request) bool {
 		}
 	case "/api/probe":
 		if method("POST") {
-			if !s.diagnosticMu.TryLock() {
-				fail(w, 409, errors.New("диагностика уже выполняется"))
+			releaseDiagnostic, err := s.diagnostics.manual(r.Context(), "проверка HTTPS через VPN")
+			if err != nil {
+				fail(w, 409, err)
 				return true
 			}
-			defer s.diagnosticMu.Unlock()
+			defer releaseDiagnostic()
 			start := time.Now()
 			e := checkVPNConnection()
 			recordProbe(e, time.Since(start))

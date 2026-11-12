@@ -267,7 +267,7 @@ func (s *Server) subscriptionAPI(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Action {
 	case "refresh":
-		code, err := s.refreshSubscription(r.Context(), s.subscriptionSettings())
+		code, err := s.refreshSubscription(r.Context(), s.subscriptionSettings(), true)
 		if err != nil {
 			fail(w, 400, err)
 		} else {
@@ -315,7 +315,7 @@ func (s *Server) subscriptionAPI(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]bool{"ok": true})
 }
 
-func (s *Server) refreshSubscription(ctx context.Context, c subscriptionConfig) (code string, err error) {
+func (s *Server) refreshSubscription(ctx context.Context, c subscriptionConfig, manual bool) (code string, err error) {
 	if c.URL == "" {
 		return "", errors.New("сначала сохраните ссылку на подписку")
 	}
@@ -366,10 +366,19 @@ func (s *Server) refreshSubscription(ctx context.Context, c subscriptionConfig) 
 	if hash == c.Bound {
 		return "unchanged", nil
 	}
-	if !s.diagnosticMu.TryLock() {
-		return "", errors.New("диагностика занята; повторите позже")
+	var releaseDiagnostic func()
+	if manual {
+		releaseDiagnostic, err = s.diagnostics.manual(ctx, "применение VPN-подписки")
+		if err != nil {
+			return "", err
+		}
+	} else {
+		releaseDiagnostic = s.diagnostics.tryExclusive("автоматическое применение VPN-подписки")
+		if releaseDiagnostic == nil {
+			return "", nil
+		}
 	}
-	defer s.diagnosticMu.Unlock()
+	defer releaseDiagnostic()
 	release, err := s.pause()
 	if err != nil {
 		return "", err
@@ -403,6 +412,6 @@ func (s *Server) subscriptionTick(ctx context.Context) {
 	defer s.subscriptionMu.Unlock()
 	c := s.subscriptionSettings()
 	if c.URL != "" && c.Auto && subscriptionDue(s.subscriptionResult(), time.Now()) {
-		_, _ = s.refreshSubscription(ctx, c)
+		_, _ = s.refreshSubscription(ctx, c, false)
 	}
 }

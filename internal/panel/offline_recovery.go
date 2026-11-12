@@ -22,7 +22,7 @@ func (s *Server) offlineRecoveryAvailable() bool {
 	return true
 }
 
-// Callers own mutation and diagnosticMu; hold the cross-process lock throughout
+// Callers own mutation and the diagnostics slot; hold the cross-process lock throughout
 // backup, route removal and file restoration. Never run an HTTPS probe here.
 func (s *Server) recoverProfileOffline() (string, error) {
 	release, err := s.pause()

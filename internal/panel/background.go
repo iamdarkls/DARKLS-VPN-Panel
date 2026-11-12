@@ -107,14 +107,18 @@ func (s *Server) serviceMonitorLoop(ctx context.Context) {
 			return
 		}
 		id := dueService(st, last, now, time.Duration(p.Interval)*time.Second)
-		if id == "" || !s.diagnosticMu.TryLock() {
+		if id == "" {
 			return
 		}
-		defer s.diagnosticMu.Unlock()
-		probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		background, releaseDiagnostic := s.diagnostics.tryProbe(ctx, "фоновая проверка "+serviceDomains[id])
+		if releaseDiagnostic == nil {
+			return
+		}
+		defer releaseDiagnostic()
+		probeCtx, cancel := context.WithTimeout(background, 15*time.Second)
 		defer cancel()
 		result := checkService(probeCtx, serviceDomains[id])
-		if ctx.Err() != nil {
+		if background.Err() != nil {
 			return
 		}
 		last[id] = time.Now()
