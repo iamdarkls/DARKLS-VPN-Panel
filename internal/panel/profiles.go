@@ -122,14 +122,19 @@ func (s *Server) backupConfigured() bool {
 	st, e := os.Stat(s.profilePath("backup"))
 	return e == nil && st.Mode().IsRegular()
 }
-func (s *Server) profileStatus() map[string]any {
+func (s *Server) activeProfile() (string, any) {
 	var active map[string]any
 	_ = readJSON(filepath.Join(s.dir, "active-profile.json"), &active)
 	name := "primary"
-	if v, ok := active["name"].(string); ok {
-		name = v
+	if active["name"] == "backup" {
+		name = "backup"
 	}
-	return map[string]any{"active": name, "backup_configured": s.backupConfigured(), "auto_failover": s.preferences().AutoFailover, "last_switch": active["at"]}
+	return name, active["at"]
+}
+
+func (s *Server) profileStatus() map[string]any {
+	name, at := s.activeProfile()
+	return map[string]any{"active": name, "backup_configured": s.backupConfigured(), "auto_failover": s.preferences().AutoFailover, "last_switch": at}
 }
 func (s *Server) candidate(ctx context.Context, cfg map[string]any, port int, run func(*http.Client) error) error {
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { exclusiveOperation } from '../stores/vpn';
 import CredentialScope from '../components/CredentialScope.vue';
 
 import PanelBox from '../components/PanelBox.vue';
@@ -76,10 +77,17 @@ defineExpose({ refresh: load });
       Явно повторить установку ранее неудачной версии
     </label>
     <ActionButton :action="save">Сохранить режим обновления Xray</ActionButton>
-    <ActionButton kind="primary" :disabled="!latest || working" :action="install">
+    <ActionButton
+      kind="primary"
+      :disabled="!latest || working || exclusiveOperation"
+      :action="install"
+    >
       Установить проверенный Xray
     </ActionButton>
-    <ActionButton :disabled="!data.rollback_available || working" :action="rollback">
+    <ActionButton
+      :disabled="!data.rollback_available || working || exclusiveOperation"
+      :action="rollback"
+    >
       Вернуть предыдущее ядро с USB
     </ActionButton>
   </PanelBox>

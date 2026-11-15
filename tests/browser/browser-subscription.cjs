@@ -40,10 +40,33 @@ const assert = require('node:assert/strict');
     assert.ok(!JSON.stringify(settings).includes(secret));
     await box.getByText(/Автообновление включено/).waitFor();
 
+    const requests = [];
+    await page.route('**/api/subscription', async (route) => {
+      const body = route.request().postDataJSON();
+      requests.push(body);
+      if (body.action === 'preview') {
+        await route.fulfill({ json: { id: 'test-review', profile: 'Main NL', changes: ['Порт'] } });
+      } else if (body.action === 'apply') {
+        await route.fulfill({ json: { code: 'updated' } });
+      } else {
+        await route.continue();
+      }
+    });
+    await password.fill('preview-password');
+    await box.getByRole('button', { name: 'Проверить подписку' }).click();
+    await box.getByText('Изменились: Порт.', { exact: true }).waitFor();
+    assert.deepEqual(requests.map((r) => r.action), ['preview']);
+    const apply = box.getByRole('button', { name: 'Применить изменения' });
+    assert.equal(await apply.isDisabled(), true);
+    await password.fill('preview-password');
+    await apply.click();
+    await box.getByText('Изменились: Порт.', { exact: true }).waitFor({ state: 'hidden' });
+    assert.equal(requests.at(-1).review, 'test-review');
+
     await password.fill('preview-password');
     await box.getByRole('button', { name: 'Удалить подписку' }).click();
     await box.getByText(/Привязана к текущему профилю/).waitFor({ state: 'hidden' });
-    assert.equal(await box.getByRole('button', { name: 'Проверить и применить' }).isDisabled(), true);
+    assert.equal(await box.getByRole('button', { name: 'Проверить подписку' }).isDisabled(), true);
     console.log('PASS: subscription save, opt-in, secret handling and removal through real API');
   } finally {
     await browser.close();

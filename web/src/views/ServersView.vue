@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { exclusiveOperation } from '../stores/vpn';
 import CredentialIdentity from '../components/CredentialIdentity.vue';
 import CredentialScope from '../components/CredentialScope.vue';
 
@@ -78,8 +79,10 @@ defineExpose({ refresh });
           ]"
         />
         <button type="button" class="primary" @click="openEditor()">+ Добавить сервер</button>
-        <ActionButton :action="snapshot">Сохранить текущее в список</ActionButton>
-        <ActionButton :disabled="!data.rollback_available" :action="rollback">
+        <ActionButton :disabled="exclusiveOperation" :action="snapshot">
+          Сохранить текущее в список
+        </ActionButton>
+        <ActionButton :disabled="!data.rollback_available || exclusiveOperation" :action="rollback">
           Вернуть предыдущее подключение
         </ActionButton>
       </PanelBox>
@@ -113,7 +116,7 @@ defineExpose({ refresh });
             <div class="server-actions">
               <ActionButton
                 :kind="item.active ? 'secondary' : 'primary'"
-                :disabled="item.active"
+                :disabled="item.active || exclusiveOperation"
                 :action="async () => use(item)"
               >
                 {{ item.active ? 'Уже подключён' : 'Подключить' }}
@@ -143,7 +146,7 @@ defineExpose({ refresh });
         </div>
       </div>
       <p v-if="!data.history?.length" class="muted">Переключений после обновления пока нет.</p>
-      <ActionButton :disabled="!data.rollback_available" :action="rollback">
+      <ActionButton :disabled="!data.rollback_available || exclusiveOperation" :action="rollback">
         Проверить и вернуть предыдущий канал
       </ActionButton>
     </PanelBox>
@@ -187,11 +190,15 @@ defineExpose({ refresh });
             />
           </label>
         </CredentialScope>
-        <ActionButton :action="saveBackup">Проверить и сохранить резерв</ActionButton>
-        <ActionButton :action="() => switchProfile('primary')">
+        <ActionButton :disabled="exclusiveOperation" :action="saveBackup">
+          Проверить и сохранить резерв
+        </ActionButton>
+        <ActionButton :disabled="exclusiveOperation" :action="() => switchProfile('primary')">
           Переключиться на основной
         </ActionButton>
-        <ActionButton :action="() => switchProfile('backup')">Переключиться на резерв</ActionButton>
+        <ActionButton :disabled="exclusiveOperation" :action="() => switchProfile('backup')">
+          Переключиться на резерв
+        </ActionButton>
       </PanelBox>
     </div>
     <Modal
@@ -326,16 +333,18 @@ defineExpose({ refresh });
         </CredentialScope>
         <p class="tiny muted">Реквизиты не сохраняются в браузере и очищаются при закрытии окна.</p>
         <div class="editor-actions">
-          <ActionButton :disabled="pending" :action="testConnection">
+          <ActionButton :disabled="pending || exclusiveOperation" :action="testConnection">
             Проверить соединение
           </ActionButton>
-          <ActionButton kind="primary" :disabled="pending" :action="save">
+          <ActionButton kind="primary" :disabled="pending || exclusiveOperation" :action="save">
             Проверить и сохранить сервер
           </ActionButton>
         </div>
         <details class="advanced-apply">
           <summary>Применить без сохранения в список</summary>
-          <ActionButton :disabled="pending" :action="apply">Применить как основное</ActionButton>
+          <ActionButton :disabled="pending || exclusiveOperation" :action="apply">
+            Применить как основное
+          </ActionButton>
         </details>
       </fieldset>
       <p class="operation-progress" role="status">

@@ -278,7 +278,9 @@ func (s *Server) advancedAPI(w http.ResponseWriter, r *http.Request) bool {
 			s.saveConnectivity(c)
 		}
 		if e == nil {
-			appendEvent("manual_repair", "Восстановление подтверждено: "+req.Component)
+			appendEvent("manual_repair", "Ручная проверка или восстановление: "+req.Component)
+		} else {
+			appendEvent("recovery_failed", "Ручное восстановление: "+s.scrub(e.Error()))
 		}
 	case "/api/profile-save", "/api/profile-switch", "/api/xhttp-apply":
 		var req struct {

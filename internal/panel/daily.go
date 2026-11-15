@@ -192,10 +192,22 @@ func (s *Server) sampleResources() {
 func (s *Server) activity() map[string]any {
 	summary := summarizeDay(readHistory[ProbeSample](probeHistoryPath), readHistory[ResourceSample](s.runtimePath("resources.jsonl")), time.Now().Unix())
 	relevant := map[string]bool{"vpn": true, "vpn_error": true, "recovery": true, "manual_repair": true, "profile": true, "connection": true, "update_error": true}
+	recoveryKinds := map[string]bool{"recovery": true, "recovery_failed": true, "recovery_unconfirmed": true,
+		"recovery_confirmed": true, "manual_repair": true, "server_unreachable": true, "wan_unconfirmed": true}
 	events := []map[string]any{}
+	recovery := []Event{}
+	now := time.Now().Unix()
 	lastKey := ""
 	for _, e := range readEvents() {
-		if !relevant[e.Kind] || e.At < time.Now().Add(-24*time.Hour).Unix() || e.At > time.Now().Unix() {
+		if e.At < now-86400 || e.At > now {
+			continue
+		}
+		if recoveryKinds[e.Kind] && len(recovery) < 12 {
+			if len(recovery) == 0 || recovery[len(recovery)-1].Kind != e.Kind || recovery[len(recovery)-1].Message != e.Message {
+				recovery = append(recovery, e)
+			}
+		}
+		if !relevant[e.Kind] || len(events) == 20 {
 			continue
 		}
 		key := e.Kind + e.Message
@@ -204,16 +216,18 @@ func (s *Server) activity() map[string]any {
 		}
 		lastKey = key
 		events = append(events, map[string]any{"id": outboundHash(map[string]any{"at": e.At, "kind": e.Kind, "message": e.Message})[:16], "at": e.At, "kind": e.Kind, "message": e.Message})
-		if len(events) == 20 {
+		if len(events) == 20 && len(recovery) == 12 {
 			break
 		}
 	}
 	// Scrub the batch once: avoid rereading credential files for every event.
-	var safe []map[string]any
-	if json.Unmarshal([]byte(s.scrub(string(jsonBytes(events)))), &safe) != nil {
-		safe = []map[string]any{}
+	batch := map[string]any{"notifications": events, "recovery": recovery}
+	safe := map[string]any{}
+	if json.Unmarshal([]byte(s.scrub(string(jsonBytes(batch)))), &safe) != nil {
+		safe = map[string]any{"notifications": []Event{}, "recovery": []Event{}}
 	}
-	return map[string]any{"summary": summary, "notifications": safe}
+	safe["summary"] = summary
+	return safe
 }
 func (s *Server) activityAPI(w http.ResponseWriter, r *http.Request) bool {
 	if r.URL.Path != "/api/activity" {

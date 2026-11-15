@@ -1,13 +1,15 @@
 import { computed, ref } from 'vue';
 import { api, sessionGeneration } from '../api';
-import type { Status, Device, Activity } from '../types';
+import type { Status, Device, Activity, DiagnosticOperation } from '../types';
 import { auth, busy } from './sessionState';
 import { notice, stamp } from '../composables/ui';
 export const status = ref<Status>({}),
+  operation = ref<DiagnosticOperation | null>(null),
   devices = ref<Device[]>([]),
   activity = ref<Activity>({});
 let statusRequest: Promise<void> | undefined,
   activityRequest: Promise<void> | undefined,
+  operationRequest: Promise<void> | undefined,
   activityAt = 0;
 const shown = new Set<string>();
 let read = '';
@@ -76,6 +78,27 @@ export async function setPower() {
     }
   }
 }
+export function refreshOperation() {
+  if (!auth.loggedIn || document.hidden) return Promise.resolve();
+  if (operationRequest) return operationRequest;
+  const epoch = sessionGeneration();
+  const p = (async () => {
+    try {
+      operation.value = (
+        await api<{ operation: DiagnosticOperation | null }>('operation')
+      ).operation;
+    } catch {
+      if (epoch === sessionGeneration()) operation.value = null;
+    }
+  })();
+  operationRequest = p.finally(() => {
+    if (epoch === sessionGeneration()) operationRequest = undefined;
+  });
+  return operationRequest;
+}
+export const exclusiveOperation = computed(
+  () => !!operation.value && (!operation.value.interruptible || !!operation.value.waiting)
+);
 export const probeFacts = computed(() => {
   const p = status.value.probe || {};
   return [
@@ -99,6 +122,8 @@ export const probeFacts = computed(() => {
 });
 export function resetVPN() {
   status.value = {};
+  operation.value = null;
+  operationRequest = undefined;
   devices.value = [];
   activity.value = {};
   activityAt = 0;

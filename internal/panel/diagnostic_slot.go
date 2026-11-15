@@ -10,9 +10,10 @@ import (
 const diagnosticHandoffTimeout = 3 * time.Second
 
 type diagnosticLease struct {
-	label  string
-	done   chan struct{}
-	cancel context.CancelFunc
+	label   string
+	started time.Time
+	done    chan struct{}
+	cancel  context.CancelFunc
 }
 
 // The slot serializes diagnostics with VPN changes. Only background read-only
@@ -24,8 +25,27 @@ type diagnosticSlot struct {
 	waiting string
 }
 
+type diagnosticOperation struct {
+	Label          string `json:"label"`
+	ElapsedSeconds int64  `json:"elapsed_seconds"`
+	Interruptible  bool   `json:"interruptible"`
+	Waiting        string `json:"waiting,omitempty"`
+}
+
+func (s *diagnosticSlot) snapshot() *diagnosticOperation {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.active == nil {
+		if s.waiting == "" {
+			return nil
+		}
+		return &diagnosticOperation{Waiting: s.waiting}
+	}
+	return &diagnosticOperation{s.active.label, int64(time.Since(s.active.started).Seconds()), s.active.cancel != nil, s.waiting}
+}
+
 func (s *diagnosticSlot) start(label string, cancel context.CancelFunc) func() {
-	op := &diagnosticLease{label: label, done: make(chan struct{}), cancel: cancel}
+	op := &diagnosticLease{label: label, started: time.Now(), done: make(chan struct{}), cancel: cancel}
 	s.active = op
 	return func() {
 		if cancel != nil {

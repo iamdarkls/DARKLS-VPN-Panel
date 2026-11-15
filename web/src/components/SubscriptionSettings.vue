@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { api } from '../api';
 import { notice, stamp, useAction } from '../composables/ui';
 import { registerUnsaved } from '../stores/forms';
-import { refreshStatus } from '../stores/vpn';
+import { exclusiveOperation, refreshStatus } from '../stores/vpn';
 import type { SubscriptionStatus } from '../types';
 import CredentialScope from './CredentialScope.vue';
 import PanelBox from './PanelBox.vue';
@@ -13,6 +13,21 @@ const source = ref(''),
   profile = ref(''),
   auto = ref(false),
   password = ref('');
+interface Review {
+  id?: string;
+  profile?: string;
+  changes: string[];
+}
+const review = ref<Review>();
+const dirty = computed(
+  () =>
+    !!source.value.trim() ||
+    profile.value !== (props.settings?.profile || '') ||
+    auto.value !== !!props.settings?.auto
+);
+watch([source, profile, auto, () => props.settings?.bound], () => {
+  review.value = undefined;
+});
 const { pending, run } = useAction();
 watch(
   [() => props.settings?.profile, () => props.settings?.auto],
@@ -22,12 +37,7 @@ watch(
   },
   { immediate: true }
 );
-registerUnsaved(
-  () =>
-    !!source.value.trim() ||
-    profile.value !== (props.settings?.profile || '') ||
-    auto.value !== !!props.settings?.auto
-);
+registerUnsaved(() => dirty.value);
 onUnmounted(() => {
   source.value = '';
   password.value = '';
@@ -37,25 +47,42 @@ const results: Record<string, string> = {
   unchanged: 'Изменений нет',
   error: 'Обновить профиль не удалось',
 };
-async function submit(action: 'save' | 'refresh' | 'remove') {
+async function submit(action: 'save' | 'preview' | 'apply' | 'remove') {
   if (!password.value) throw new Error('Введи пароль панели.');
+  if ((action === 'preview' || action === 'apply') && dirty.value)
+    throw new Error('Сначала сохрани настройки подписки.');
   if (
-    action === 'refresh' &&
-    !confirm('Проверить подписку и применить новый профиль, если он изменился?')
+    action === 'apply' &&
+    (!review.value?.id || !confirm('Применить показанные изменения? VPN переподключится.'))
   )
     return;
   if (action === 'remove' && !confirm('Удалить ссылку? Текущее подключение сохранится.')) return;
   try {
+    if (action === 'preview') {
+      review.value = undefined;
+      review.value = await api<Review>('subscription', 'POST', {
+        action,
+        password: password.value,
+      });
+      notice(
+        review.value.id
+          ? 'Изменения найдены. Проверь их перед применением.'
+          : 'В подписке нет изменений.'
+      );
+      return;
+    }
     const result = await api<{ code?: string }>('subscription', 'POST', {
       action,
       password: password.value,
+      ...(action === 'apply' ? { review: review.value?.id } : {}),
       ...(action === 'save' ? { url: source.value, profile: profile.value, auto: auto.value } : {}),
     });
-    if (action !== 'refresh') {
+    if (action === 'save' || action === 'remove') {
       source.value = '';
       profile.value = action === 'save' ? profile.value.trim() : '';
       if (action === 'remove') auto.value = false;
     }
+    review.value = undefined;
     if (result.code === 'updated') await refreshStatus();
     notice(
       result.code
@@ -66,7 +93,7 @@ async function submit(action: 'save' | 'refresh' | 'remove') {
     );
   } finally {
     password.value = '';
-    await props.reload().catch(() => undefined);
+    if (action !== 'preview') await props.reload().catch(() => undefined);
   }
 }
 </script>
@@ -74,7 +101,7 @@ async function submit(action: 'save' | 'refresh' | 'remove') {
 <template>
   <PanelBox
     title="VPN-подписка"
-    description="Панель принимает HTTPS-подписку со списком VLESS. Новый профиль проверяется отдельно; если он подходит, основной VPN переподключится. Используй только подписку, которой доверяешь."
+    description="Панель принимает HTTPS-подписку со списком VLESS. Сначала можно посмотреть изменения. Только применение проверяет новый туннель и переподключает VPN. Используй только подписку, которой доверяешь."
   >
     <p v-if="settings?.configured" class="muted">
       {{
@@ -138,11 +165,27 @@ async function submit(action: 'save' | 'refresh' | 'remove') {
     </button>
     <button
       type="button"
-      :disabled="pending || !password || !settings?.bound"
-      @click="run(() => submit('refresh'))"
+      :disabled="pending || !password || !settings?.bound || dirty"
+      @click="run(() => submit('preview'))"
     >
-      Проверить и применить
+      Проверить подписку
     </button>
+    <div v-if="review" class="result-box" aria-live="polite">
+      <p>Профиль: {{ review.profile || 'Единственный VLESS-профиль' }}</p>
+      <p v-if="!review.changes.length">Изменений нет.</p>
+      <template v-else>
+        <p>Изменились: {{ review.changes.join(', ') }}.</p>
+        <p class="muted">Рабочий VPN пока не изменён. Предпросмотр действителен пять минут.</p>
+        <button
+          type="button"
+          class="primary"
+          :disabled="pending || !password || dirty || exclusiveOperation"
+          @click="run(() => submit('apply'))"
+        >
+          Применить изменения
+        </button>
+      </template>
+    </div>
     <button
       type="button"
       :disabled="pending || !password || !settings?.configured"

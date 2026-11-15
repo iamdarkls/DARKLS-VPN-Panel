@@ -159,6 +159,12 @@ func (s *Server) handler() http.Handler {
 				return
 			}
 			respond(w, 200, map[string]any{"state": st, "revision": s.revision(), "catalog_notes": catalogNotes, "catalog_updates": catalogUpdates(st)})
+		case "/api/operation":
+			if r.Method != "GET" {
+				w.WriteHeader(405)
+				return
+			}
+			respond(w, 200, map[string]any{"operation": s.diagnostics.snapshot()})
 		case "/api/status":
 			if r.Method != "GET" {
 				w.WriteHeader(405)
@@ -273,6 +279,12 @@ func (s *Server) mutate(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, e)
 			return
 		}
+		releaseDiagnostic, err := s.diagnostics.manual(r.Context(), "переключение VPN")
+		if err != nil {
+			fail(w, 409, err)
+			return
+		}
+		defer releaseDiagnostic()
 		release, e := s.pause()
 		if e != nil {
 			fail(w, 409, e)
@@ -323,7 +335,19 @@ func (s *Server) status(w http.ResponseWriter) {
 	watch := pidMatches("/tmp/darkls-watch.pid", "/jffs/xray/watch.sh")
 	probe := readProbeState()
 	fresh := probeFresh(probe, time.Now())
-	respond(w, 200, map[string]any{"recovery_pending": s.pendingRecovery(), "offline_recovery_available": s.offlineRecoveryAvailable(), "active": nat && udp && xray && dns && !s.disabled() && probe.OK && fresh && recoveryVerified(probe), "routes": nat && udp && xray && dns, "disabled": s.disabled(), "nat": nat, "udp": udp, "xray": xray, "dns": dns, "watch": watch, "recovery_confirmation": probe.Confirmation, "monitor": readMonitorHeartbeat(s.runtimePath("monitor-heartbeat")), "version": version, "probe": probe, "probe_fresh": fresh})
+	disabled := s.disabled()
+	routes := nat && udp && xray && dns
+	profile, _ := s.activeProfile()
+	respond(w, 200, map[string]any{
+		"connectivity": s.latestConnectivity(), "active_profile": profile,
+		"boot_seconds": bootSeconds(), "recovery_pending": s.pendingRecovery(),
+		"offline_recovery_available": s.offlineRecoveryAvailable(),
+		"active":                     routes && !disabled && probe.OK && fresh && recoveryVerified(probe),
+		"routes":                     routes, "disabled": disabled, "nat": nat, "udp": udp, "xray": xray,
+		"dns": dns, "watch": watch, "recovery_confirmation": probe.Confirmation,
+		"monitor": readMonitorHeartbeat(s.runtimePath("monitor-heartbeat")),
+		"version": version, "probe": probe, "probe_fresh": fresh,
+	})
 }
 
 // Only the three immutable production assets belong to the public allowlist.

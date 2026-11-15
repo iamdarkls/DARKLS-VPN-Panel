@@ -27,7 +27,7 @@ export async function api<T>(
     controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(),
-    path === 'apply-status' ? 2500 : path === 'status' ? 8000 : 180000
+    path === 'apply-status' || path === 'operation' ? 2500 : path === 'status' ? 8000 : 180000
   );
   pending.add(controller);
   try {

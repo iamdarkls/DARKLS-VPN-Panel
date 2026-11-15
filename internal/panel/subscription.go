@@ -222,7 +222,7 @@ func (s *Server) subscriptionResult() subscriptionResult {
 }
 
 func (s *Server) subscriptionCurrent() (string, error) {
-	if s.profileStatus()["active"] != "primary" {
+	if name, _ := s.activeProfile(); name != "primary" {
 		return "", errors.New("сначала подключите основной профиль")
 	}
 	out, err := s.connectionOutbound("current")
@@ -247,6 +247,7 @@ func (s *Server) subscriptionAPI(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Password string `json:"password"`
 		Action   string `json:"action"`
+		Review   string `json:"review"`
 		URL      string `json:"url"`
 		Profile  string `json:"profile"`
 		Auto     bool   `json:"auto"`
@@ -266,11 +267,27 @@ func (s *Server) subscriptionAPI(w http.ResponseWriter, r *http.Request) {
 	defer s.subscriptionMu.Unlock()
 
 	switch req.Action {
-	case "refresh":
-		code, err := s.refreshSubscription(r.Context(), s.subscriptionSettings(), true)
+	case "preview":
+		review, err := s.previewSubscription(r.Context(), s.subscriptionSettings())
 		if err != nil {
 			fail(w, 400, err)
 		} else {
+			respond(w, 200, review)
+		}
+		return
+	case "apply":
+		c := s.subscriptionSettings()
+		review := s.pendingSubscription
+		if review.ID == "" || review.ID != req.Review || !time.Now().Before(review.expires) || review.config != c {
+			fail(w, 409, errors.New("предпросмотр устарел; проверьте подписку повторно"))
+			return
+		}
+		code, err := s.applySubscription(r.Context(), c, review.out, true)
+		s.recordSubscription(r.Context(), code, err)
+		if err != nil {
+			fail(w, 400, err)
+		} else {
+			s.pendingSubscription = subscriptionReview{}
 			respond(w, 200, map[string]string{"code": code})
 		}
 		return
@@ -311,39 +328,29 @@ func (s *Server) subscriptionAPI(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, errors.New("неизвестное действие подписки"))
 		return
 	}
+	s.pendingSubscription = subscriptionReview{}
 	_ = os.Remove(s.runtimePath("subscription-status.json"))
 	respond(w, 200, map[string]bool{"ok": true})
 }
 
-func (s *Server) refreshSubscription(ctx context.Context, c subscriptionConfig, manual bool) (code string, err error) {
+func (s *Server) subscriptionBound(c subscriptionConfig) error {
 	if c.URL == "" {
-		return "", errors.New("сначала сохраните ссылку на подписку")
+		return errors.New("сначала сохраните ссылку на подписку")
 	}
 	if current, _ := s.subscriptionCurrent(); current != c.Bound || current == "" || s.disabled() {
-		return "", errors.New("включите основной VPN и привяжите подписку к текущему подключению")
+		return errors.New("включите основной VPN и привяжите подписку к текущему подключению")
 	}
-	defer func() {
-		if code != "" && ctx.Err() == nil {
-			result := subscriptionResult{At: time.Now().Unix(), Code: code}
-			if err != nil {
-				result.Message = err.Error()
-			}
-			_ = atomicWrite(s.runtimePath("subscription-status.json"), jsonBytes(result))
-			switch code {
-			case "updated":
-				appendEvent("connection", "Основное подключение обновлено из подписки")
-			case "error":
-				appendEvent("connection_error", "Не удалось обновить профиль из подписки; подробности в разделе VPN-серверы")
-			}
-		}
-	}()
+	return nil
+}
+
+func fetchSubscriptionOutbound(ctx context.Context, c subscriptionConfig) (map[string]any, error) {
 	data, err := fetchSubscription(ctx, c.URL)
 	if err != nil {
-		return "error", err
+		return nil, err
 	}
 	out, err := selectSubscription(data, c.Profile)
 	if err != nil {
-		return "error", err
+		return nil, err
 	}
 	hash := outboundHash(out)
 	if hash != c.Bound {
@@ -352,9 +359,43 @@ func (s *Server) refreshSubscription(ctx context.Context, c subscriptionConfig, 
 		_, err = subscriptionAddresses(dnsCtx, host)
 		cancel()
 		if err != nil {
-			return "error", errors.New("новый VPN-сервер не разрешается в публичный адрес")
+			return nil, errors.New("новый VPN-сервер не разрешается в публичный адрес")
 		}
 	}
+	return out, nil
+}
+
+func (s *Server) recordSubscription(ctx context.Context, code string, err error) {
+	if code == "" || ctx.Err() != nil {
+		return
+	}
+	result := subscriptionResult{At: time.Now().Unix(), Code: code}
+	if err != nil {
+		result.Message = err.Error()
+	}
+	_ = atomicWrite(s.runtimePath("subscription-status.json"), jsonBytes(result))
+	switch code {
+	case "updated":
+		appendEvent("connection", "Основное подключение обновлено из подписки")
+	case "error":
+		appendEvent("connection_error", "Не удалось обновить профиль из подписки; подробности в разделе VPN-серверы")
+	}
+}
+
+func (s *Server) refreshSubscription(ctx context.Context, c subscriptionConfig, manual bool) (code string, err error) {
+	if err = s.subscriptionBound(c); err != nil {
+		return "", err
+	}
+	defer func() { s.recordSubscription(ctx, code, err) }()
+	out, err := fetchSubscriptionOutbound(ctx, c)
+	if err != nil {
+		return "error", err
+	}
+	return s.applySubscription(ctx, c, out, manual)
+}
+
+func (s *Server) applySubscription(ctx context.Context, c subscriptionConfig, out map[string]any, manual bool) (string, error) {
+	hash := outboundHash(out)
 	if !s.mutation.TryLock() {
 		return "", errors.New("другая операция выполняется; повторите позже")
 	}
@@ -367,6 +408,7 @@ func (s *Server) refreshSubscription(ctx context.Context, c subscriptionConfig, 
 		return "unchanged", nil
 	}
 	var releaseDiagnostic func()
+	var err error
 	if manual {
 		releaseDiagnostic, err = s.diagnostics.manual(ctx, "применение VPN-подписки")
 		if err != nil {
@@ -410,6 +452,9 @@ func (s *Server) subscriptionTick(ctx context.Context) {
 		return
 	}
 	defer s.subscriptionMu.Unlock()
+	if !time.Now().Before(s.pendingSubscription.expires) {
+		s.pendingSubscription = subscriptionReview{}
+	}
 	c := s.subscriptionSettings()
 	if c.URL != "" && c.Auto && subscriptionDue(s.subscriptionResult(), time.Now()) {
 		_, _ = s.refreshSubscription(ctx, c, false)

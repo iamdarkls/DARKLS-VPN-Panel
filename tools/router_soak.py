@@ -15,7 +15,28 @@ import urllib.parse
 import urllib.request
 
 
+def transitions(samples):
+    """Report observed changes only, without estimating when they occurred."""
+    previous_boot = previous_profile = previous_at = None
+    markers = []
+    for sample in samples:
+        at = sample.get('elapsed_seconds')
+        boot = sample.get('boot_seconds')
+        profile = sample.get('active_profile')
+        if boot is not None and previous_boot is not None and (boot < previous_boot or
+                (at is not None and previous_at is not None and at - previous_at > boot - previous_boot + 3)):
+            markers.append({'elapsed_seconds': at, 'kind': 'router_reboot_observed'})
+        if profile in ('primary', 'backup') and previous_profile and profile != previous_profile:
+            markers.append({'elapsed_seconds': at, 'kind': 'profile_changed', 'profile': profile})
+        if boot is not None:
+            previous_boot, previous_at = boot, at
+        if profile in ('primary', 'backup'):
+            previous_profile = profile
+    return markers
+
+
 def summarize(samples, interval):
+    markers = transitions(samples)
     known = [s for s in samples if 'active' in s and not s.get('disabled')]
     panels = [s['panel_rss_kib'] for s in samples if s.get('panel_rss_kib') is not None]
     xrays = [s['xray_rss_kib'] for s in samples if s.get('xray_rss_kib') is not None]
@@ -26,7 +47,7 @@ def summarize(samples, interval):
             longest = max(longest, run)
         else:
             run = 0
-    return {'samples': len(samples), 'known_enabled_samples': len(known),
+    return {'samples': len(samples), 'transitions': markers, 'known_enabled_samples': len(known),
             'unconfirmed_enabled_samples': sum(not s['active'] for s in known),
             'unknown_samples': sum('active' not in s for s in samples),
             'longest_unconfirmed_sample_sequence_seconds': longest * interval,
@@ -64,12 +85,28 @@ def main():
         with opener.open(req, timeout=10) as response:
             return json.loads(response.read(512 * 1024))
 
-    password = getpass.getpass('Panel password (not SSH): ')
-    try:
-        request('login', {'user': args.user, 'password': password})
-    finally:
-        password = ''
-    csrf = request('session')['csrf']
+    def login():
+        nonlocal csrf
+        csrf = ''
+        password = getpass.getpass('Panel password (not SSH): ')
+        try:
+            request('login', {'user': args.user, 'password': password})
+        finally:
+            password = ''
+        csrf = request('session')['csrf']
+
+    def read_status():
+        try:
+            return request('status')
+        except urllib.error.HTTPError as error:
+            if error.code != 401:
+                raise
+            error.close()
+        print('Panel session expired or router restarted. Sign in to continue.', flush=True)
+        login()
+        return request('status')
+
+    login()
     samples = []
     started = time.monotonic()
     interrupted = False
@@ -78,10 +115,16 @@ def main():
             tick = time.monotonic()
             sample = {'elapsed_seconds': round(tick - started, 2)}
             try:
-                status = request('status')
+                status = read_status()
                 for field in ('active', 'disabled', 'xray', 'dns', 'nat', 'udp', 'probe_fresh'):
                     if isinstance(status.get(field), bool):
                         sample[field] = status[field]
+                uptime = status.get('boot_seconds')
+                if type(uptime) is int and uptime > 0:
+                    sample['boot_seconds'] = uptime
+                profile = status.get('active_profile')
+                if profile in ('primary', 'backup'):
+                    sample['active_profile'] = profile
                 probe = status.get('probe') or {}
                 for field in ('recoveries', 'failures'):
                     if isinstance(probe.get(field), (int, float)):

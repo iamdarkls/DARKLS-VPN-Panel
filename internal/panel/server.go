@@ -17,19 +17,20 @@ type realRunner = routerexec.Real
 
 type Server struct {
 	AuthService
-	root, dir, host  string
-	operationContext context.Context
-	runner           Runner
-	mutation         sync.Mutex
-	applyMu          sync.Mutex
-	applyProgress    ApplyProgress
-	diagnostics      diagnosticSlot
-	metricsMu        sync.Mutex
-	githubMu         sync.Mutex
-	coreMu           sync.Mutex
-	historyMu        sync.Mutex
-	subscriptionMu   sync.Mutex
-	lastCPU          cpuSample
+	root, dir, host     string
+	operationContext    context.Context
+	runner              Runner
+	mutation            sync.Mutex
+	applyMu             sync.Mutex
+	applyProgress       ApplyProgress
+	diagnostics         diagnosticSlot
+	metricsMu           sync.Mutex
+	githubMu            sync.Mutex
+	coreMu              sync.Mutex
+	historyMu           sync.Mutex
+	subscriptionMu      sync.Mutex
+	pendingSubscription subscriptionReview
+	lastCPU             cpuSample
 }
 
 func newServer(root, host string, runner Runner) *Server {

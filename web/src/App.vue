@@ -8,7 +8,14 @@ import { api } from './api';
 import { auth, login, logoutLocal, initialize } from './stores/session';
 import { dirty, preview, prepareApply, cancelApply, apply, discard } from './stores/draft';
 import { busy } from './stores/sessionState';
-import { status, refreshStatus, setPower } from './stores/vpn';
+import {
+  exclusiveOperation,
+  operation,
+  refreshOperation,
+  status,
+  refreshStatus,
+  setPower,
+} from './stores/vpn';
 import { theme } from './composables/theme';
 import { useAction, perform, errorMessage, stamp, usePolling } from './composables/ui';
 import { views, menus, tabs } from './navigation';
@@ -167,6 +174,7 @@ function beforeUnload(event: BeforeUnloadEvent) {
 function visible() {
   if (!document.hidden && auth.loggedIn) {
     void perform(refreshStatus);
+    void refreshOperation();
     void refresh();
   }
 }
@@ -176,6 +184,7 @@ usePolling(async () => {
     if (['devices', 'metrics', 'logs'].includes(view.value)) await refresh();
   }
 }, 30000);
+usePolling(refreshOperation, 5000);
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnload);
   document.addEventListener('visibilitychange', visible);
@@ -366,7 +375,12 @@ onUnmounted(() => {
             <p id="vpn-desc" class="muted">{{ description }}</p>
           </div>
         </div>
-        <button id="power" class="secondary" :disabled="busy" @click="run(setPower)">
+        <button
+          id="power"
+          class="secondary"
+          :disabled="busy || exclusiveOperation"
+          @click="run(setPower)"
+        >
           {{ status.disabled ? 'Включить VPN' : 'Выключить VPN' }}
         </button>
         <div id="checks" class="checks">
@@ -380,6 +394,13 @@ onUnmounted(() => {
           </span>
         </div>
       </section>
+      <p v-if="operation" id="active-operation" class="muted" role="status">
+        <template v-if="operation.label">
+          Выполняется: {{ operation.label }} · {{ operation.elapsed_seconds }} с.
+        </template>
+        <template v-if="operation.waiting">Ожидает: {{ operation.waiting }}.</template>
+        <template v-else-if="operation.interruptible">Ручные действия доступны.</template>
+      </p>
       <div id="notice" class="notice hidden" role="status"></div>
       <Tabs
         v-if="tabs[view]"

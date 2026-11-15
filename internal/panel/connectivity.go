@@ -31,6 +31,8 @@ type Connectivity struct {
 	TunnelHTTPS    bool              `json:"tunnel_https"`
 	Clock          bool              `json:"clock"`
 	Complete       bool              `json:"complete"`
+	WANChecked     bool              `json:"wan_checked,omitempty"`
+	ServerChecked  bool              `json:"server_checked,omitempty"`
 	TrafficChecked bool              `json:"traffic_checked"`
 	Errors         map[string]string `json:"errors"`
 	Actions        []string          `json:"actions,omitempty"`
@@ -190,7 +192,7 @@ func (s *Server) collectConnectivityWithin(full bool) (c Connectivity) {
 		}
 	}
 	if full && c.Clock && s.networkContext().Err() == nil {
-		c.TrafficChecked = true
+		c.WANChecked = true
 		ctx, cancel := context.WithTimeout(s.networkContext(), 6*time.Second)
 		if e := checkDirectInternet(ctx); e == nil {
 			c.WAN = true
@@ -198,11 +200,19 @@ func (s *Server) collectConnectivityWithin(full bool) (c Connectivity) {
 			c.Errors["direct_internet"] = s.scrub(e.Error())
 		}
 		cancel()
+		if s.networkContext().Err() != nil {
+			return c
+		}
+		c.ServerChecked = true
 		if e := s.serverTCP(); e == nil {
 			c.ServerTCP = true
 		} else {
 			c.Errors["server_tcp"] = s.scrub(e.Error())
 		}
+		if s.networkContext().Err() != nil {
+			return c
+		}
+		c.TrafficChecked = true
 		if e := checkVPNConnectionContext(s.networkContext()); e == nil {
 			c.TunnelHTTPS = true
 		} else {
@@ -211,7 +221,20 @@ func (s *Server) collectConnectivityWithin(full bool) (c Connectivity) {
 	}
 	return c
 }
+
+// Status polling reads the last sample; only explicit checks and recovery run probes.
+func (s *Server) latestConnectivity() *Connectivity {
+	var c Connectivity
+	if readJSON(s.runtimePath("connectivity.json"), &c) != nil || c.At <= 0 {
+		return nil
+	}
+	return &c
+}
+
 func (s *Server) saveConnectivity(c Connectivity) {
+	if c.At == 0 {
+		c.At = time.Now().Unix()
+	}
 	_ = atomicWrite(s.runtimePath("connectivity.json"), jsonBytes(c))
 	if !c.Complete && c.Errors["incomplete"] != "" {
 		appendEvent("diagnostic_incomplete", c.Errors["incomplete"])

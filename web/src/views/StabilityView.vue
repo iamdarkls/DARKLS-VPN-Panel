@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import CredentialScope from '../components/CredentialScope.vue';
 
+import ConnectionOverview from '../components/ConnectionOverview.vue';
+import { exclusiveOperation } from '../stores/vpn';
 import PanelBox from '../components/PanelBox.vue';
 import Facts from '../components/Facts.vue';
 import DataTable from '../components/DataTable.vue';
@@ -41,6 +43,7 @@ defineExpose({ refresh });
       aria-labelledby="tab-stability-history"
       tabindex="0"
     >
+      <ConnectionOverview />
       <PanelBox
         title="Сводка за последние 24 часа"
         description="Доступность по HTTPS-пробам общего туннеля. Состояние отдельных сайтов может отличаться."
@@ -114,7 +117,10 @@ defineExpose({ refresh });
             />
           </label>
         </CredentialScope>
-        <ActionButton :disabled="recoveryBusy" :action="() => recoverPending()">
+        <ActionButton
+          :disabled="recoveryBusy || exclusiveOperation"
+          :action="() => recoverPending()"
+        >
           Повторить восстановление
         </ActionButton>
         <template v-if="status.offline_recovery_available">
@@ -123,7 +129,10 @@ defineExpose({ refresh });
             После этого можно выбрать новое подключение. Эта операция не подтверждает
             работоспособность туннеля и не включает VPN автоматически.
           </p>
-          <ActionButton :disabled="recoveryBusy" :action="() => recoverPending(true)">
+          <ActionButton
+            :disabled="recoveryBusy || exclusiveOperation"
+            :action="() => recoverPending(true)"
+          >
             Восстановить с выключенным VPN
           </ActionButton>
         </template>
@@ -139,6 +148,7 @@ defineExpose({ refresh });
             ['rules', 'Только правила'],
           ]"
           :key="component"
+          :disabled="exclusiveOperation"
           :action="() => repair(component!)"
         >
           {{ label }}
@@ -154,7 +164,9 @@ defineExpose({ refresh });
             />
           </label>
         </CredentialScope>
-        <ActionButton :action="() => repair('xray')">Перезапустить Xray</ActionButton>
+        <ActionButton :disabled="exclusiveOperation" :action="() => repair('xray')">
+          Перезапустить Xray
+        </ActionButton>
       </PanelBox>
     </div>
     <div

@@ -34,6 +34,7 @@ export interface PanelState {
   policy: { mode: 'all' | 'include' | 'exclude'; devices: DeviceRef[] };
 }
 export interface Probe {
+  checked_at?: number;
   ok?: boolean;
   last_success?: number;
   last_failure?: number;
@@ -44,7 +45,14 @@ export interface Probe {
   duration_ms?: number;
   error?: string;
 }
+export interface DiagnosticOperation {
+  label?: string;
+  elapsed_seconds: number;
+  interruptible: boolean;
+  waiting?: string;
+}
 export interface Status {
+  connectivity?: Connectivity | null;
   active?: boolean;
   disabled?: boolean;
   routes?: boolean;
@@ -160,7 +168,13 @@ export interface Preview {
   note?: string;
 }
 export type Fact = [string, string | number | boolean | null | undefined];
+export interface RecoveryEvent {
+  kind: string;
+  at: number;
+  message: string;
+}
 export interface Activity {
+  recovery?: RecoveryEvent[];
   summary?: Record<string, string | number | boolean>;
   notifications?: { id: string; at: number; kind: string; message: string }[];
 }
@@ -185,6 +199,9 @@ export interface ServiceResult {
   duration_ms: number;
 }
 export interface Connectivity {
+  at?: number;
+  wan_checked?: boolean;
+  server_checked?: boolean;
   complete?: boolean;
   clock?: boolean;
   xray?: boolean;

@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue';
+import { connectionRows } from '../connectivity';
 import { api } from '../api';
 import type { Connectivity, Dependencies, Diagnosis, ServiceResult } from '../types';
 import { devices, loadDevices, probeFacts, refreshStatus } from '../stores/vpn';
@@ -24,35 +25,23 @@ export function useDiagnostics() {
       ]).entries()
     )
   );
-  const rows = computed(() => {
-    const c = connectivity.value;
-    if (!c) return [];
-    return [
-      [
-        'Диагностика',
-        c.complete === false ? 'Не завершена: часть результатов неизвестна' : 'Завершена',
-      ],
-      ['Часы', c.clock ? 'Синхронизированы' : 'Ожидаем NTP'],
-      ['Xray', c.xray],
-      ['Процесс DNS helper', c.dns_process],
-      ['DNS helper', c.local_dns],
-      ['DNS Xray', c.tunnel_dns],
-      ['Правила', c.rules],
-      ['Прямой HTTPS', c.traffic_checked ? c.direct_internet : 'Не проверен'],
-      ['TCP VPN-сервера', c.traffic_checked ? c.server_tcp : 'Не проверен'],
-      ['HTTPS через VPN', c.traffic_checked ? c.tunnel_https : 'Не проверен'],
-    ].map(
-      ([k, v]) =>
-        [
-          String(k),
-          typeof v === 'boolean'
-            ? v
-              ? 'Ответил / исправен'
-              : 'Не подтверждён'
-            : String(v ?? 'Не проверен'),
-        ] as [string, string]
-    );
-  });
+  const rows = computed(() =>
+    connectivity.value
+      ? [
+          [
+            'Диагностика',
+            connectivity.value.complete === false
+              ? 'Не завершена: часть результатов неизвестна'
+              : 'Завершена',
+          ] as [string, string],
+          ['Часы', connectivity.value.clock ? 'Синхронизированы' : 'Ожидаем NTP'] as [
+            string,
+            string,
+          ],
+          ...connectionRows(connectivity.value),
+        ]
+      : []
+  );
   const dependencyRows = computed(
     () =>
       dependencies.value?.rows.map((r) => ({
