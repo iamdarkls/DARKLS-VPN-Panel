@@ -14,7 +14,10 @@ await page.goto('http://127.0.0.1:18088');await page.locator('#login-form input[
 const vpnToast=page.locator('.toast').filter({hasText:'Соединение восстановлено'});await vpnToast.waitFor();
 await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));assert.equal(await vpnToast.isVisible(),true);
 const bounds=await vpnToast.boundingBox();assert.ok(bounds.x>900 && bounds.y>700);await vpnToast.getByRole('button',{name:'Закрыть уведомление'}).click();assert.equal(await page.evaluate(()=>localStorage.getItem('darkls-notifications-read')),'event1');
-await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/service-history')),page.locator('[data-view=stability]').click()]); assert.equal(await page.locator('.toast').filter({hasText:'Соединение восстановлено'}).count(),0);
+// Vue keeps a dismissed toast in the DOM until the leave transition finishes.
+await vpnToast.waitFor({state:'detached'});
+await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/service-history')),page.locator('[data-view=stability]').click()]);
+assert.equal(await vpnToast.count(),0);
 await page.locator('[data-view=servers]').click();await page.locator('.server-card').waitFor();await page.screenshot({path:'/tmp/darkls-160-servers-light.png',fullPage:true});
 await page.getByRole('button',{name:'+ Добавить сервер',exact:true}).click();const editor=page.locator('.connection-dialog');await editor.getByLabel('Название сервера',{exact:true}).fill('Новый сервер');await editor.getByLabel('VLESS-ссылка или outbound JSON',{exact:true}).fill('vless://test@example.com:443?type=xhttp');
 let saved;await page.route('**/api/connection-save',r=>{saved=r.request().postDataJSON();if(!saved.id)items.push({id:'server-new',name:saved.name,protocol:'vless',transport:'xhttp',security:'reality'});return r.fulfill({json:{ok:true}})});
@@ -54,7 +57,8 @@ await page.screenshot({path:'/tmp/darkls-161-grpc-mobile.png',animations:'disabl
 await editor.getByRole('button',{name:'Закрыть редактор сервера'}).click();
 await page.mouse.move(0,0);await page.clock.install();
 await page.getByRole('button',{name:'Сохранить текущее в список'}).click();await auth.getByLabel('Текущий пароль панели').fill('preview-password');await auth.getByRole('button',{name:'Сохранить копию',exact:true}).click();await auth.waitFor({state:'hidden'});
-await page.clock.fastForward(8100);assert.equal(await page.locator('.toast').filter({hasText:'Текущее подключение сохранено в списке.'}).count(),0);
+const snapshotToast=page.locator('.toast').filter({hasText:'Текущее подключение сохранено в списке.'});await snapshotToast.waitFor();
+await page.clock.fastForward(8100);await snapshotToast.waitFor({state:'detached'});
 await page.getByRole('button',{name:'+ Добавить сервер',exact:true}).click();await editor.getByRole('button',{name:'Проверить соединение',exact:true}).click();await page.locator('.toast-error').filter({hasText:'Вставь ссылку или outbound JSON.'}).waitFor();await page.clock.fastForward(20000);assert.equal(await page.locator('.toast-error').filter({hasText:'Вставь ссылку или outbound JSON.'}).count(),1);await editor.getByRole('button',{name:'Закрыть редактор сервера'}).click();
 await page.locator('#logout').click();await page.locator('#login').waitFor({state:'visible'});assert.equal(await page.locator('.toast').count(),0);
 assert.deepEqual(errors,[]);console.log('PASS: fixed lower-right toasts, dismissal/deduplication, modal error visibility, server cards, save without switching, offline rename, explicit switch, preserved XHTTP, current snapshot, active deletion, mobile, secret clearing');await browser.close();
