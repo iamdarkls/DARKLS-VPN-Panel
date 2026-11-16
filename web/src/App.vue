@@ -409,40 +409,58 @@ onUnmounted(() => {
         :model-value="selected[view]!"
         @update:model-value="selected[view] = $event"
       />
-      <SitesView :ref="(el) => screenRef('sites', el)" v-show="view === 'sites'" />
-      <DevicesView :ref="(el) => screenRef('devices', el)" v-show="view === 'devices'" />
+      <SitesView
+        class="view-motion"
+        :ref="(el) => screenRef('sites', el)"
+        v-show="view === 'sites'"
+      />
+      <DevicesView
+        class="view-motion"
+        :ref="(el) => screenRef('devices', el)"
+        v-show="view === 'devices'"
+      />
       <ServersView
+        class="view-motion"
         :ref="(el) => screenRef('servers', el)"
         v-show="view === 'servers'"
         :tab="selected.servers!"
       />
       <DiagnosticsView
+        class="view-motion"
         :ref="(el) => screenRef('diagnostics', el)"
         v-show="view === 'diagnostics'"
       />
       <StabilityView
+        class="view-motion"
         :ref="(el) => screenRef('stability', el)"
         v-show="view === 'stability'"
         :tab="selected.stability!"
       />
-      <TuningView :ref="(el) => screenRef('tuning', el)" v-show="view === 'tuning'" />
+      <TuningView
+        class="view-motion"
+        :ref="(el) => screenRef('tuning', el)"
+        v-show="view === 'tuning'"
+      />
       <UpdatesView
+        class="view-motion"
         :ref="(el) => screenRef('updates', el)"
         v-show="view === 'updates'"
         :tab="selected.updates!"
       />
       <BackupsView
+        class="view-motion"
         :ref="(el) => screenRef('backups', el)"
         v-show="view === 'backups'"
         :tab="selected.backups!"
       />
       <ResourcesView
+        class="view-motion"
         :ref="(el) => screenRef('metrics', el)"
         v-show="view === 'metrics'"
         mode="metrics"
       />
 
-      <PasswordView v-show="view === 'settings'" />
+      <PasswordView class="view-motion" v-show="view === 'settings'" />
     </main>
     <Modal
       :open="!!applyProgress"

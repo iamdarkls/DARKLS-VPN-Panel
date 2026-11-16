@@ -8,13 +8,19 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
  await page.getByLabel('Свернуть или развернуть меню').click();assert.equal(await page.locator('#app').evaluate(n=>n.classList.contains('sidebar-collapsed')),true);
  await page.reload();await page.locator('.card').first().waitFor();assert.equal(await page.locator('#app').evaluate(n=>n.classList.contains('sidebar-collapsed')),true);
  await page.getByLabel('Свернуть или развернуть меню').click();await page.getByLabel('Поиск раздела').click();await page.getByLabel('Поиск раздела').fill('сервер');assert.equal(await page.locator('.nav').count(),1);await page.getByLabel('Поиск раздела').fill('');
- await page.locator('[data-view=metrics]').click();await page.locator('.metric-card').first().waitFor();await page.screenshot({path:'/tmp/darkls-design-desktop.png',fullPage:true});
- assert.equal(reads,0);await page.locator('#open-logs').click();const modal=page.getByRole('dialog',{name:'Журналы',exact:true});await modal.waitFor();await page.locator('.log-line').first().waitFor();assert.equal(reads,1);
+ await page.locator('[data-view=metrics]').click();await page.locator('.metric-card').first().waitFor();assert.equal(await page.locator('#metrics-view').evaluate(n=>getComputedStyle(n).animationName),'panel-enter');await page.screenshot({path:'/tmp/darkls-design-desktop.png',fullPage:true});
+ assert.equal(reads,0);await page.locator('#open-logs').click();const modal=page.getByRole('dialog',{name:'Журналы',exact:true});await modal.waitFor();assert.equal(await modal.evaluate(n=>getComputedStyle(n).animationName),'dialog-enter');await page.locator('.log-line').first().waitFor();assert.equal(reads,1);
  await page.getByLabel('Источник журнала').selectOption('watch');assert.equal(await page.locator('.log-line').count(),3);await page.getByLabel('Уровень записей').selectOption('error');assert.equal(await page.locator('.log-line').count(),1);
  await page.getByLabel('Поиск в журнале').click();await page.getByLabel('Поиск в журнале').fill('no match');assert.equal(await page.locator('.log-line').count(),0);await page.getByLabel('Поиск в журнале').fill('');
  const download=page.waitForEvent('download');await modal.getByRole('button',{name:'Скачать',exact:true}).click();assert.equal((await download).suggestedFilename(),'darkls-watch.log');
  await page.clock.install();await page.getByRole('checkbox',{name:'Автообновление',exact:true}).check();await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/logs')),page.clock.fastForward(5100)]);assert.equal(reads,2);
  await page.screenshot({path:'/tmp/darkls-design-logs.png'});await page.keyboard.press('Escape');await modal.waitFor({state:'detached'});await page.clock.fastForward(10000);assert.equal(reads,2);
  for(const theme of ['light','dark']) {await page.locator('#theme-select').selectOption(theme);await page.setViewportSize({width:390,height:844});await page.locator('#open-logs').click();await modal.waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await modal.evaluate(n=>n.scrollWidth>n.clientWidth),false);await page.screenshot({path:'/tmp/darkls-design-mobile-'+theme+'.png'});await page.getByRole('button',{name:'Закрыть журналы',exact:true}).click();}
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.locator('#open-logs').click();await modal.waitFor();
+ assert.equal(await modal.evaluate(n=>getComputedStyle(n).animationName),'none');
+ assert.equal(await modal.evaluate(n=>getComputedStyle(n,'::backdrop').animationName),'none');
+ await page.keyboard.press('Escape');await modal.waitFor({state:'detached'});
+ assert.equal(await page.locator('#metrics-view').evaluate(n=>getComputedStyle(n).animationName),'none');
  assert.deepEqual(errors,[]);await browser.close();console.log('PASS: sidebar persistence/search, dark/light mobile, logs modal, filtering, download, opt-in polling and cleanup');
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -15,6 +15,12 @@ onMounted(() => {
   observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
 });
 onUnmounted(() => observer.disconnect());
+
+function muteLeavingToast(element: Element) {
+  if (!(element instanceof HTMLElement)) return;
+  element.inert = true;
+  element.style.top = element.offsetTop + 'px';
+}
 </script>
 <template>
   <button type="button" class="secondary notification-trigger" @click="historyOpen = true">
@@ -46,8 +52,14 @@ onUnmounted(() => observer.disconnect());
     </template>
   </Modal>
   <Teleport :to="target">
-    <section class="toast-region" aria-label="Уведомления">
+    <TransitionGroup
+      tag="section"
+      name="toast-stack"
+      class="toast-region"
+      aria-label="Уведомления"
+      @before-leave="muteLeavingToast"
+    >
       <ToastItem v-for="t in toasts" :key="t.id" :item="t" />
-    </section>
+    </TransitionGroup>
   </Teleport>
 </template>

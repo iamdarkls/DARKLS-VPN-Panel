@@ -567,13 +567,12 @@ header .muted {
   background: #fff;
   border-radius: 50%;
   box-shadow: 0 1px 3px #0002;
-  transition: left 0.15s;
 }
 .switch.on {
   background: var(--switch-on);
 }
 .switch.on:after {
-  left: 18px;
+  transform: translateX(15px);
 }
 .domain-preview {
   height: 56px;
@@ -1134,7 +1133,6 @@ dialog .facts strong {
   color: var(--ink);
   border-radius: 12px;
   box-shadow: 0 12px 42px #080f2826;
-  animation: toast-enter 0.2s ease-out;
 }
 .toast-mark {
   width: 25px;
@@ -1194,16 +1192,6 @@ dialog .facts strong {
 .notification-entry p {
   font-size: 15px;
   margin: 0;
-}
-@keyframes toast-enter {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -2065,5 +2053,107 @@ dialog::backdrop {
 @media (min-width: 1101px) {
   .metrics-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Motion follows interaction. Route and tab panels stay mounted to preserve drafts. */
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    --motion-fast: 140ms;
+    --motion-enter: 220ms;
+    --motion-ease: cubic-bezier(0.2, 0.7, 0.25, 1);
+  }
+
+  .view-motion,
+  .view-motion [role='tabpanel'],
+  .login-card {
+    animation: panel-enter var(--motion-enter) var(--motion-ease);
+  }
+  dialog[open] {
+    animation: dialog-enter var(--motion-enter) var(--motion-ease);
+  }
+  dialog[open]::backdrop {
+    animation: backdrop-enter var(--motion-enter) ease-out;
+  }
+
+  .nav,
+  .section-tabs button,
+  .switch,
+  .status-pill {
+    transition:
+      background-color var(--motion-fast) ease-out,
+      border-color var(--motion-fast) ease-out,
+      color var(--motion-fast) ease-out;
+  }
+  .collapse-menu .nav-icon,
+  .switch::after {
+    transition: transform var(--motion-enter) var(--motion-ease);
+  }
+  .sidebar-collapsed .collapse-menu .nav-icon {
+    transform: scale(0.84);
+  }
+  .big-dot {
+    transition:
+      background-color var(--motion-enter) ease-out,
+      box-shadow var(--motion-enter) ease-out;
+  }
+  button[aria-busy='true'] {
+    position: relative;
+  }
+  button[aria-busy='true']::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 4px;
+    inset-inline-end: 4px;
+    width: 0.65em;
+    height: 0.65em;
+    border: 2px solid currentColor;
+    border-inline-end-color: transparent;
+    border-radius: 50%;
+    animation: busy-spin 0.75s linear infinite;
+  }
+
+  .toast-stack-enter-active,
+  .toast-stack-leave-active,
+  .toast-stack-move {
+    transition:
+      opacity var(--motion-fast) ease-out,
+      transform var(--motion-enter) var(--motion-ease);
+  }
+  .toast-stack-enter-from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  .toast-stack-leave-to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  .toast-stack-leave-active {
+    position: absolute;
+    width: calc(100% - 4px);
+    pointer-events: none;
+  }
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0.55;
+    transform: translateY(5px);
+  }
+}
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+@keyframes backdrop-enter {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes busy-spin {
+  to {
+    transform: rotate(1turn);
   }
 }
