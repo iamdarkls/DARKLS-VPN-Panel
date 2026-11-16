@@ -20,8 +20,35 @@ const assert = require('node:assert/strict');
     const auto = box.getByRole('checkbox');
     assert.equal(await auto.isChecked(), false);
     const secret = 'test-subscription-token';
-    await source.fill('https://example.com:2096/sub/' + secret);
-    await box.getByLabel('Точное имя профиля').fill('Main NL');
+    const url = 'https://example.com:2096/sub/' + secret;
+    const requests = [];
+    await page.route('**/api/subscription', async (route) => {
+      const body = route.request().postDataJSON();
+      requests.push(body);
+      if (body.action === 'list') {
+        await route.fulfill({
+          json: { profiles: [{ name: 'Main NL' }, { name: 'Backup' }], unavailable: 0, truncated: false },
+        });
+      } else if (body.action === 'preview') {
+        await route.fulfill({ json: { id: 'test-review', profile: 'Main NL', changes: ['Порт'] } });
+      } else if (body.action === 'apply') {
+        await route.fulfill({ json: { code: 'updated' } });
+      } else {
+        await route.continue();
+      }
+    });
+    const load = box.getByRole('button', { name: 'Загрузить профили' });
+    const profile = box.getByLabel('Профиль из подписки');
+    await source.fill(url);
+    await password.fill('preview-password');
+    await load.click();
+    await profile.waitFor();
+    assert.deepEqual(requests.map((r) => r.action), ['list']);
+    assert.equal(requests[0].url, url);
+    assert.equal(await password.inputValue(), '');
+    await password.fill('preview-password');
+    assert.equal(await save.isDisabled(), true);
+    await profile.selectOption('Main NL');
     await password.fill('preview-password');
     await save.click();
     await box.getByText(/Привязана к текущему профилю/).waitFor();
@@ -40,18 +67,12 @@ const assert = require('node:assert/strict');
     assert.ok(!JSON.stringify(settings).includes(secret));
     await box.getByText(/Автообновление включено/).waitFor();
 
-    const requests = [];
-    await page.route('**/api/subscription', async (route) => {
-      const body = route.request().postDataJSON();
-      requests.push(body);
-      if (body.action === 'preview') {
-        await route.fulfill({ json: { id: 'test-review', profile: 'Main NL', changes: ['Порт'] } });
-      } else if (body.action === 'apply') {
-        await route.fulfill({ json: { code: 'updated' } });
-      } else {
-        await route.continue();
-      }
-    });
+    await password.fill('preview-password');
+    await load.click();
+    await profile.waitFor();
+    assert.equal(requests.at(-1).url, '');
+    assert.equal(await profile.inputValue(), 'Main NL');
+    requests.length = 0;
     await password.fill('preview-password');
     await box.getByRole('button', { name: 'Проверить подписку' }).click();
     await box.getByText('Изменились: Порт.', { exact: true }).waitFor();

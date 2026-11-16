@@ -18,7 +18,10 @@ import (
 	"time"
 )
 
-const subscriptionLimit = 512 << 10
+const (
+	subscriptionLimit        = 512 << 10
+	subscriptionProfileLimit = 100
+)
 
 type subscriptionConfig struct {
 	URL     string `json:"url"`
@@ -154,7 +157,12 @@ func fetchSubscription(ctx context.Context, raw string) ([]byte, error) {
 	return data, nil
 }
 
-func selectSubscription(data []byte, name string) (map[string]any, error) {
+type subscriptionEntry struct {
+	name string
+	link string
+}
+
+func subscriptionEntries(data []byte) []subscriptionEntry {
 	body := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "\ufeff"))
 	if !strings.Contains(body, "://") {
 		encoded := strings.Join(strings.Fields(body), "")
@@ -165,24 +173,75 @@ func selectSubscription(data []byte, name string) (map[string]any, error) {
 			}
 		}
 	}
-	var selected string
+	var entries []subscriptionEntry
 	for line := range strings.SplitSeq(body, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, "vless://") {
 			continue
 		}
-		u, err := url.Parse(line)
-		if err != nil || (name != "" && u.Fragment != name) {
+		if u, err := url.Parse(line); err == nil {
+			entries = append(entries, subscriptionEntry{u.Fragment, line})
+		}
+	}
+	return entries
+}
+
+func selectSubscription(data []byte, name string) (map[string]any, error) {
+	var selected string
+	for _, entry := range subscriptionEntries(data) {
+		if name != "" && entry.name != name {
 			continue
 		}
 		if selected != "" {
-			return nil, errors.New("найдено несколько VLESS-профилей; укажите уникальное точное имя")
+			return nil, errors.New("найдено несколько VLESS-профилей; загрузите список и выберите уникальный профиль")
 		}
-		selected = line
+		selected = entry.link
 	}
 	if selected == "" {
 		return nil, errors.New("в подписке нет подходящего VLESS-профиля")
 	}
+	return parseSubscriptionOutbound(selected)
+}
+
+type subscriptionProfile struct {
+	Name string `json:"name"`
+}
+
+type subscriptionCatalog struct {
+	Profiles    []subscriptionProfile `json:"profiles"`
+	Unavailable int                   `json:"unavailable"`
+	Truncated   bool                  `json:"truncated"`
+}
+
+func listSubscriptionProfiles(data []byte) subscriptionCatalog {
+	entries := subscriptionEntries(data)
+	catalog := subscriptionCatalog{Profiles: []subscriptionProfile{}}
+	counts := make(map[string]int, len(entries))
+	for _, entry := range entries {
+		counts[entry.name]++
+	}
+	for _, entry := range entries {
+		name := entry.name
+		// An empty selector means "the only VLESS entry", never "the unnamed entry".
+		if (name == "" && len(entries) != 1) || counts[name] != 1 ||
+			(name != "" && (strings.TrimSpace(name) != name || validConnectionName(name) != nil || redact(name) != name)) {
+			catalog.Unavailable++
+			continue
+		}
+		if len(catalog.Profiles) == subscriptionProfileLimit {
+			catalog.Truncated = true
+			break
+		}
+		if _, err := parseSubscriptionOutbound(entry.link); err != nil {
+			catalog.Unavailable++
+			continue
+		}
+		catalog.Profiles = append(catalog.Profiles, subscriptionProfile{Name: name})
+	}
+	return catalog
+}
+
+func parseSubscriptionOutbound(selected string) (map[string]any, error) {
 	out, err := parseBackup(selected)
 	if err != nil {
 		return nil, errors.New("найденный VLESS-профиль не поддерживается")
@@ -267,6 +326,22 @@ func (s *Server) subscriptionAPI(w http.ResponseWriter, r *http.Request) {
 	defer s.subscriptionMu.Unlock()
 
 	switch req.Action {
+	case "list":
+		raw := strings.TrimSpace(req.URL)
+		if raw == "" {
+			raw = s.subscriptionSettings().URL
+		}
+		if raw == "" {
+			fail(w, 400, errors.New("введите HTTPS-ссылку на подписку"))
+			return
+		}
+		data, err := fetchSubscription(r.Context(), raw)
+		if err != nil {
+			fail(w, 400, err)
+		} else {
+			respond(w, 200, listSubscriptionProfiles(data))
+		}
+		return
 	case "preview":
 		review, err := s.previewSubscription(r.Context(), s.subscriptionSettings())
 		if err != nil {

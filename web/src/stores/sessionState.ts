@@ -4,7 +4,7 @@ export const auth = reactive({
   ready: false,
   loggedIn: false,
   user: '',
-  version: '2.3.1',
+  version: '2.3.2',
   error: '',
   epoch: 0,
 });

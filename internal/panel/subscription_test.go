@@ -34,6 +34,34 @@ func TestSelectSubscriptionProfile(t *testing.T) {
 	}
 }
 
+func TestListSubscriptionProfilesOnlyOffersUsableSelectors(t *testing.T) {
+	const link = "vless://00000000-0000-4000-8000-000000000001@example.com:443?security=tls"
+	list := strings.Join([]string{
+		link + "#%D0%A3%D0%B7%D0%B5%D0%BB%20NL",
+		link + "#Duplicate",
+		link + "#Duplicate",
+		link + "&allowInsecure=true#Unsafe",
+		link + "#00000000-0000-4000-8000-000000000001",
+		link,
+		"ss://other-protocol",
+	}, "\n")
+	body := []byte(base64.RawStdEncoding.EncodeToString([]byte(list)))
+	catalog := listSubscriptionProfiles(body)
+	if len(catalog.Profiles) != 1 || catalog.Profiles[0].Name != "Узел NL" || catalog.Unavailable != 5 || catalog.Truncated {
+		t.Fatalf("unexpected catalog: %+v", catalog)
+	}
+	if _, err := selectSubscription(body, catalog.Profiles[0].Name); err != nil {
+		t.Fatal(err)
+	}
+	if got := string(jsonBytes(catalog)); strings.Contains(got, "vless://") || strings.Contains(got, "00000000-") || strings.Contains(got, "example.com") {
+		t.Fatal("catalog disclosed connection details")
+	}
+	single := listSubscriptionProfiles([]byte(link))
+	if len(single.Profiles) != 1 || single.Profiles[0].Name != "" || single.Unavailable != 0 {
+		t.Fatalf("single unnamed profile should be selectable: %+v", single)
+	}
+}
+
 func TestSubscriptionPublicOnly(t *testing.T) {
 	for _, ip := range []string{"::1", "127.0.0.1", "::ffff:192.168.1.2", "100.64.1.2", "169.254.169.254", "198.19.0.5", "64:ff9b::7f00:1"} {
 		if subscriptionPublic(netip.MustParseAddr(ip)) {
