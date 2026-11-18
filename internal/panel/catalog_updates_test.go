@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -38,6 +39,22 @@ func TestCatalogProposalsPreserveGroupsAndRespectDecisions(t *testing.T) {
 	if _, err := validate(st); err == nil {
 		t.Fatal("invalid decision accepted")
 	}
+}
+
+func TestChatGPTCatalogOffersSitesForExistingGroup(t *testing.T) {
+	st := State{Groups: []Group{{ID: "my-chatgpt", Name: "My ChatGPT", Enabled: false, Domains: []string{"chatgpt.com", "example.org"}}}}
+	for _, update := range catalogUpdates(st) {
+		if update.ID != "chatgpt" {
+			continue
+		}
+		if update.New || update.Group.Enabled || update.Group.ID != "my-chatgpt" ||
+			!slices.Contains(update.Missing, "chatgpt.site") ||
+			!slices.Contains(update.Group.Domains, "example.org") {
+			t.Fatalf("incorrect ChatGPT catalog update: %+v", update)
+		}
+		return
+	}
+	t.Fatal("missing ChatGPT catalog update")
 }
 
 func TestNewCatalogGroupsRemainDisabled(t *testing.T) {

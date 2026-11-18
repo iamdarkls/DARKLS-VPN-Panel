@@ -16,6 +16,11 @@ const grokDomains = "grok.com x.ai grok.x.com x.com twitter.com t.co twimg.com c
 const xGrokMarker = "x-grok-enabled-v1"
 
 var additionalPresets = []Group{
+	{ID: "perplexity", Name: "Perplexity", Domains: strings.Fields("perplexity.ai perplexity.com pplx.ai ppl-ai-file-upload.s3.amazonaws.com pplx-res.cloudinary.com")},
+	{ID: "threads", Name: "Threads", Domains: strings.Fields("threads.com threads.net cdninstagram.com fbcdn.net")},
+	{ID: "bluesky", Name: "Bluesky", Domains: strings.Fields("bsky.app bsky.network bsky.social")},
+	{ID: "twitch", Name: "Twitch", Domains: strings.Fields("twitch.tv ttvnw.net jtvnw.net live-video.net twitchcdn.net twitchsvc.net ext-twitch.tv")},
+	{ID: "proton", Name: "Proton", Domains: strings.Fields("proton.me pm.me protonmail.com protonmail.ch protonvpn.com protonvpn.ch protonstatus.com protontech.ch protonweb.com")},
 	{ID: "grok", Name: "Grok / xAI", Domains: strings.Fields(grokDomains)},
 	{ID: "facebook", Name: "Facebook / Messenger", Domains: strings.Fields("facebook.com facebook.net fb.com fbcdn.net fbsbx.com messenger.com m.me")},
 	{ID: "linkedin", Name: "LinkedIn", Domains: strings.Fields("linkedin.com licdn.com lnkd.in")},

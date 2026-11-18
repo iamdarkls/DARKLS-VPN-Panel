@@ -8,11 +8,11 @@ func inferCategory(id string) string {
 		return "adult"
 	}
 	switch id {
-	case "youtube", "tiktok", "netflix":
+	case "youtube", "tiktok", "netflix", "twitch":
 		return "video"
-	case "chatgpt", "gemini", "claude", "grok":
+	case "chatgpt", "gemini", "claude", "grok", "perplexity":
 		return "ai"
-	case "instagram", "twitter", "facebook", "linkedin", "snapchat":
+	case "instagram", "twitter", "facebook", "linkedin", "snapchat", "threads", "bluesky":
 		return "social"
 	case "telegram", "discord", "signal", "viber", "whatsapp", "facetime":
 		return "messaging"
@@ -24,7 +24,7 @@ func inferCategory(id string) string {
 		return "news"
 	case "notion", "miro", "canva", "adobe", "autodesk", "wrike":
 		return "work"
-	case "grammarly", "speedtest", "chess", "rutracker", "rutor":
+	case "grammarly", "speedtest", "chess", "rutracker", "rutor", "proton":
 		return "tools"
 	}
 	return "custom"
