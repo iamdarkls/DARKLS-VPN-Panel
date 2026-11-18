@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"bytes"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 )
@@ -35,7 +37,18 @@ func TestProbeFallbackAndInvalidResponses(t *testing.T) {
 	if err := probeTargets(client, []probeTarget{{server.URL + "/trace", 200, "\nip="}}); err != nil {
 		t.Fatal(err)
 	}
+	want, err := os.ReadFile("../../assets/certs/github-roots.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pem, err := githubRootsPEM()
+	if err != nil || !bytes.Equal(want, pem) {
+		t.Fatalf("embedded CA bundle differs from its source: %v", err)
+	}
 	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pem) {
+		t.Fatal("invalid fallback CA roots")
+	}
 	if !roots.AppendCertsFromPEM(probeRoots) {
 		t.Fatal("invalid CA roots")
 	}

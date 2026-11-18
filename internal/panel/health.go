@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -84,7 +85,20 @@ func newProbeClient(proxy *url.URL, roots *x509.CertPool) (*http.Client, *http.T
 
 var sharedRoots = sync.OnceValue(func() *x509.CertPool {
 	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM(githubRoots)
+	if pem, err := githubRootsPEM(); err == nil {
+		roots.AppendCertsFromPEM(pem)
+	}
 	roots.AppendCertsFromPEM(probeRoots)
 	return roots
 })
+
+// The fallback bundle is inflated once, when the shared pool is first needed.
+// On corruption, leave it out so TLS fails closed for roots not otherwise present.
+func githubRootsPEM() ([]byte, error) {
+	reader, err := gzip.NewReader(strings.NewReader(assets.GitHubRootsGzip))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
+}

@@ -30,8 +30,6 @@ const githubRepository = "iamdarkls/DARKLS-VPN-Panel"
 // built by your own repository after Publish-GitHub.ps1 generates its key.
 var githubPublicKey = assets.GitHubPublicKey
 
-var githubRoots = assets.GitHubRoots
-
 type GitHubStatus struct {
 	Channel           string `json:"channel"`
 	InstalledChannel  string `json:"installed_channel"`

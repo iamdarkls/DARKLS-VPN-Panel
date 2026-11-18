@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var version = "2.3.4"
+var version = "2.3.5"
 
 func tuneRuntime() {
 	// The local control panel has little parallel work. Bound Go's memory target
