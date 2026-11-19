@@ -105,14 +105,15 @@ func TestSubscriptionBindingStopsAfterManualChange(t *testing.T) {
 }
 
 func TestSubscriptionSchedule(t *testing.T) {
-	now := time.Now()
+	now := time.Now().Truncate(time.Second)
 	for _, tc := range []struct {
 		ago  time.Duration
 		code string
 		due  bool
 	}{
-		{2 * time.Hour, "updated", false}, {7 * time.Hour, "unchanged", true},
-		{30 * time.Minute, "error", false}, {2 * time.Hour, "error", true},
+		{7 * time.Hour, "updated", false}, {12*time.Hour - time.Second, "unchanged", false},
+		{12 * time.Hour, "unchanged", true},
+		{time.Hour - time.Second, "error", false}, {time.Hour, "error", true},
 		{-time.Hour, "updated", true},
 	} {
 		if subscriptionDue(subscriptionResult{At: now.Add(-tc.ago).Unix(), Code: tc.code}, now) != tc.due {

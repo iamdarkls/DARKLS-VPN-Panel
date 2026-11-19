@@ -94,7 +94,7 @@ const {
       </div>
       <label class="quic-label">
         <input v-model="auto" type="checkbox" />
-        Проверять и применять изменения автоматически (раз в 6 часов)
+        Проверять и применять изменения автоматически (раз в 12 часов)
       </label>
       <CredentialScope>
         <label>

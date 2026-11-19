@@ -408,7 +408,7 @@ func (s *Server) applySubscription(ctx context.Context, c subscriptionConfig, ou
 }
 
 func subscriptionDue(result subscriptionResult, now time.Time) bool {
-	delay := 6 * time.Hour
+	delay := 12 * time.Hour
 	if result.Code == "error" {
 		delay = time.Hour
 	}
